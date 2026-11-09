@@ -38,6 +38,39 @@ LICENSE_DIRECTORY/licenses
 
 The stable head-unit installation does not contain this development SDK/license.
 
+## Archived SDK media inspected on 2026-11-09
+
+The [upstream build instructions](https://github.com/Sq00ky/Supra-iDrive6-Android-Auto#building-yourself)
+link to [this archived SDK](https://archive.org/details/qnxsdp-65.7z).
+Static inspection confirmed that its DVD contains a Linux installer and payload,
+GCC 4.4.2 ARM cross-compiler files, ARMv7 `_cpp`/`_gpp` configurations and ARM
+target libraries. Selected payload files matched their installer-index hashes.
+The downloaded container matched Internet Archive's published MD5; this is a
+transfer-integrity check, **not verification against a QNX-published checksum**.
+
+The retained DVD image is `qnxsdp-6.5.0-201007091524-dvd.iso` (3,839,135,744 bytes).
+Its locally calculated SHA256 is:
+
+```
+c8701b45ae91b9ef760b66a9487f0397df2be8b4f7c40dd2851226db68045db8
+```
+
+For this local setup, the ISO is saved under `.local/qnx/downloads/`. The two
+Linux installation files are together under `.local/qnx/downloads/linux-media/`:
+
+```
+qnxsdp-6.5.0-201007091524-linux.bin
+qnx_linux_setup.jar
+```
+
+These are installation media, **not an installed SDK**. No installer or compiler
+was executed during inspection. The archive's unrelated key generator was not
+extracted or used. A suitable QNX 6.5 license is still required; the current
+QNX Everywhere account/license does not by itself establish legacy entitlement.
+Use QNX's installation/activation process with an appropriate license, then point
+`configure` at the resulting installed SDK root. Compiler/runtime compatibility
+with this container remains unverified until `verify-sdk` succeeds.
+
 ## Prepare this Mac
 
 Run from the repository root:
