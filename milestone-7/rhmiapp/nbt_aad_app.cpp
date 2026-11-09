@@ -61,12 +61,15 @@
 #include "boot_guard.hpp"
 #include "overlay_watch.hpp"
 #include "entry_key.hpp"
+#include "connection_prompt.hpp"
+#include "../src/phone_watch.hpp"
+#include "../src/phone_watch_state.hpp"
 #ifdef __QNX__
 #include <sys/slog.h>
 #include <sys/slogcodes.h>
 #endif
 
-#define NBT_AAD_APP_VERSION "rhmiapp-44-gpswfd (" __DATE__ " " __TIME__ ")"
+#define NBT_AAD_APP_VERSION "rhmiapp-45-connection-prompt-experimental (" __DATE__ " " __TIME__ ")"
 
 extern char** environ;
 
@@ -181,6 +184,7 @@ public:
     // Fires one of our XML <events>; a focusEvent whose targetModel is a NativeStateID raIntModel makes HmiMain3D
     // request that native state (ActiveSeating::onExitToSeatMenu: triggerEvent(23) -> NativeStateID 1789).
     void triggerEvent(unsigned eventId);                                          // _ZN3bmw9PluginApp12triggerEventEj
+    void triggerEvent(unsigned eventId, const Parcel& value);                     // optional popup bool overload
     void post(Runnable* runnable, unsigned delayMs);   // runs runnable->run() on the app thread after delayMs
     // Re-points a model at another text of our text DB. BMW's ActiveSeating sets its entry button text this way
     // (onInit: TextID(0x54) -> updateModel(2, ...)); we use it for the entry's "Connecting..." state.
@@ -564,6 +568,7 @@ bool onGearChanged(void* /*app*/, const bmw::BasicString<unsigned short>& value)
 // line id, so callStatus1 (id 1) counted as a permanent call and the BACK / OPTIONS re-hold never fired.
 const char* const kCallProps[2] = { "communication.callStatus0", "communication.callStatus1" };
 bool g_callLine[2] = { false, false };
+bool g_promptCallKnown = false;
 time_t g_callEnd = 0;          // when the last call ended
 
 bool callActive() { return g_callLine[0] || g_callLine[1]; }
@@ -575,6 +580,7 @@ bool onCallStatus(int line, const bmw::BasicString<unsigned short>& value) {
     while (p && p[n] && n < sizeof(text) - 1) { text[n] = (p[n] < 0x80) ? (char)p[n] : '?'; ++n; }
     text[n] = 0;
     bool active = nbt::cdsCallActive(text);
+    g_promptCallKnown = nbt::cdsIntField(text, "state", -1) >= 0;
     bool was = callActive();
     g_callLine[line] = active;
     if (was && !callActive()) g_callEnd = time(NULL);
@@ -972,6 +978,8 @@ int  g_holdTries = 0;          // fired without iDrive showing the state yet (it
 bool g_aaSeen = false;         // state 13 was shown since we last fired event 52
 bool g_holdGaveUp = false;
 bool g_popupAside = false;     // stepped aside for an iDrive context (warning/camera/...): stays aside, no re-hold
+bool g_promptNativeBusy = true; // until a real graphical context arrives, automatic prompts stay quiet
+bool connectionPromptVisible();
 nbt::OverlayWatch g_ow;        // "Show iDrive warnings": hmi.graphicalContext -> step aside / come back (overlay_watch.hpp)
 bool driverInputNow(const DaemonState& d);
 bool knobInputNow(const DaemonState& d);
@@ -1021,6 +1029,17 @@ bool onGraphicalContext(void*, const bmw::BasicString<unsigned short>& value) {
     char widget[48], title[80];
     jsonStr(text, "widgetType", widget, sizeof(widget));
     jsonStr(text, "menuTitle", title, sizeof(title));
+    char lower[48];
+    size_t lowerLen = strlen(widget);
+    for (size_t i = 0; i < lowerLen; ++i) lower[i] = (char)tolower((unsigned char)widget[i]);
+    lower[lowerLen] = 0;
+    // Conservatively defer on known popup/camera/Check Control widget families.
+    // The native popup's low priority is still responsible for firmware-specific overlays.
+    // The appended popup is the sixth state (native id 50005); its own context
+    // must not immediately dismiss it as a foreign popup.
+    if (!(connectionPromptVisible() && (vc == 50005 || vc == 132)))
+        g_promptNativeBusy = vc < 0 || !strcmp(widget, "GFXIDENTIFIER_INVALID") ||
+            strstr(lower, "popup") || strstr(lower, "camera") || strstr(lower, "ccm") || strstr(lower, "carplay");
     static int s_lastVc = -1000;
     static char s_lastWidget[48] = "";
     if (vc == s_lastVc && !strcmp(widget, s_lastWidget)) return true;
@@ -1571,6 +1590,222 @@ void setConnectingAnimation(bmw::PluginApp* app, bool on) {
     }
 }
 
+// ---- experimental native connection notification ------------------------------------------------------------------
+// Appended XML state/event; existing state order, native CarPlay and daemon protocol stay unchanged.
+const unsigned kActPrompt = 120, kActPromptTest = 121, kActPromptOpen = 122, kActPromptDismiss = 123;
+const unsigned kPromptModel = 124, kPromptEvent = 131, kPromptState = 132;
+const char* const kPromptFlag = "/var/opt/aa/connection-prompt";
+const char* const kPromptPhone = "/var/opt/aa/prompt-phone";
+const char* const kPhoneWatch = "/opt/aa/nbt-phone-watch";
+const char* const kPhoneWatchState = "/dev/shmem/nbt-aad-phone";
+nbt::ConnectionPrompt g_connectionPrompt;
+pid_t g_phoneWatchPid = 0;
+bool g_phoneWatchStopping = false, g_promptFocusSeen = false, g_promptUnsupported = false;
+bool g_promptSettingShown = false;
+char g_phoneWatchAddress[18] = "";
+uint32_t g_phoneWatchRetry = 0;
+bool g_phoneWatchRetrySet = false;
+int g_promptConfigShown = -1, g_promptTelemetryShown = -1;
+bool connectionPromptVisible() { return g_connectionPrompt.visible(); }
+void bootGuardReset(const char* why);
+
+bool promptEnabled() { return fileExists(kPromptFlag) && !g_promptUnsupported; }
+
+bool promptBlocked() {
+    return g_lastGear < 0 || g_lastPdc < 0 || !g_promptCallKnown || g_promptNativeBusy ||
+        g_lastGear == kReverseGear || g_lastPdc == kPdcActive || callActive() || g_stopPid != 0;
+}
+
+bool promptEvent(bmw::PluginApp* app, bool show) {
+    // This overload is exported by the bundled libAppFramework.A.so. Resolve it
+    // dynamically so older firmware can reject the optional feature cleanly.
+    typedef void (*Trigger)(bmw::PluginApp*, unsigned, const bmw::Parcel&);
+    Trigger trigger = reinterpret_cast<Trigger>(dlsym(RTLD_DEFAULT, "_ZN3bmw9PluginApp12triggerEventEjRKNS_6ParcelE"));
+    if (!app || !trigger) {
+        alog("connection prompt: native triggerEvent(Parcel) is unavailable; disabled for this HMI run");
+        g_promptUnsupported = true;
+        return false;
+    }
+    bmw::Parcel value(show);
+    if (show) g_promptFocusSeen = false;
+    trigger(app, kPromptEvent, value);
+    alog("connection prompt: native popup event %u requested (%s; rendering requires head-unit verification)",
+         kPromptEvent, show ? "show" : "hide");
+    return true;
+}
+
+void closePrompt(bmw::PluginApp* app) {
+    bool wasVisible = g_connectionPrompt.visible();
+    // A native hide may synchronously deliver focus loss. Clear our state first
+    // so that callback cannot recursively request another hide or a stale Open.
+    g_connectionPrompt.dismiss();
+    g_promptFocusSeen = false;
+    if (wasVisible) promptEvent(app, false);
+}
+
+bool selectedPromptPhone(char (&address)[18]) {
+    FILE* f = fopen(kPromptPhone, "r");
+    if (!f) return false;
+    char line[64];
+    bool ok = fgets(line, sizeof(line), f) != NULL;
+    // Exactly one address; reject extra content rather than selecting a different phone.
+    int extra = fgetc(f);
+    fclose(f);
+    if (!ok || extra != EOF) return false;
+    line[strcspn(line, "\r\n")] = 0;
+    return nbt::normalizePhoneAddress(line, address);
+}
+
+void stopPhoneWatch() {
+    if (g_phoneWatchPid <= 0 || g_phoneWatchStopping) return;
+    pid_t got = waitpid(g_phoneWatchPid, NULL, WNOHANG);
+    if (got == 0) { kill(g_phoneWatchPid, SIGTERM); g_phoneWatchStopping = true; }
+    else { g_phoneWatchPid = 0; g_phoneWatchStopping = false; }
+}
+
+void reapPhoneWatch(uint32_t now) {
+    if (g_phoneWatchPid <= 0) return;
+    pid_t got = waitpid(g_phoneWatchPid, NULL, WNOHANG);
+    if (got == g_phoneWatchPid || (got < 0 && errno == ECHILD)) {
+        alog("connection prompt: phone watcher exited");
+        g_phoneWatchPid = 0; g_phoneWatchStopping = false;
+        g_phoneWatchRetry = now; g_phoneWatchRetrySet = true;
+    }
+}
+
+nbt::PhoneWatchState readPhoneWatchState(uint32_t now) {
+    nbt::PhoneWatchState result;
+    reapPhoneWatch(now); // Open can arrive before the next periodic status poll
+    if (g_phoneWatchPid <= 0 || g_phoneWatchStopping) return result;
+    FILE* f = fopen(kPhoneWatchState, "r");
+    if (!f) return result;
+    char line[128] = "";
+    bool ok = fgets(line, sizeof(line), f) != NULL;
+    int extra = fgetc(f);
+    fclose(f);
+    if (ok && extra == EOF) result.parse(line, (int)g_phoneWatchPid, now);
+    return result;
+}
+
+void servicePhoneWatch(bmw::PluginApp* app, uint32_t now) {
+    reapPhoneWatch(now);
+    char address[18] = "";
+    bool selected = promptEnabled() && selectedPromptPhone(address);
+    int config = !promptEnabled() ? 0 : selected ? 2 : 1;
+    if (config != g_promptConfigShown) {
+        alog("connection prompt: %s", config == 0 ? "off" : config == 1 ?
+            "waiting for a valid selected Android phone in /var/opt/aa/prompt-phone" : "selected Android phone configured");
+        g_promptConfigShown = config;
+    }
+    if (!selected || strcmp(address, g_phoneWatchAddress)) {
+        stopPhoneWatch();
+        if (g_connectionPrompt.visible() && !g_connectionPrompt.manual()) closePrompt(app);
+        if (strcmp(address, g_phoneWatchAddress)) {
+            if (g_connectionPrompt.visible()) closePrompt(app);
+            snprintf(g_phoneWatchAddress, sizeof(g_phoneWatchAddress), "%s", address);
+            g_connectionPrompt.reset();
+            g_phoneWatchRetrySet = false;
+        }
+    }
+    if (!selected || g_phoneWatchPid > 0 ||
+        (g_phoneWatchRetrySet && (uint32_t)(now - g_phoneWatchRetry) < 30000u)) return;
+    g_phoneWatchRetry = now; g_phoneWatchRetrySet = true;
+    int nul = open("/dev/null", O_RDWR);
+    if (nul < 0) return;
+    posix_spawn_file_actions_t fa;
+    posix_spawn_file_actions_init(&fa);
+    posix_spawn_file_actions_adddup2(&fa, nul, 0);
+    posix_spawn_file_actions_adddup2(&fa, nul, 1);
+    posix_spawn_file_actions_adddup2(&fa, nul, 2);
+    char* args[] = { const_cast<char*>(kPhoneWatch), address, const_cast<char*>(kPhoneWatchState), NULL };
+    pid_t pid = 0;
+    int error = posix_spawn(&pid, kPhoneWatch, &fa, NULL, args, environ);
+    posix_spawn_file_actions_destroy(&fa);
+    close(nul);
+    if (!error) { g_phoneWatchPid = pid; alog("connection prompt: read-only phone watcher started (pid %d)", (int)pid); }
+    else alog("connection prompt: could not start %s (error %d); retry in 30 s", kPhoneWatch, error);
+}
+
+void serviceConnectionPrompt(bmw::PluginApp* app, const DaemonState& daemon) {
+    uint32_t now = nowMs();
+    servicePhoneWatch(app, now);
+    if (!promptEnabled() && !g_connectionPrompt.visible()) return;
+    nbt::PhoneWatchState phone = readPhoneWatchState(now);
+    int telemetry = !phone.known ? 0 : phone.connected ? 2 : 1;
+    if (telemetry != g_promptTelemetryShown) {
+        alog("connection prompt: selected-phone telemetry %s", telemetry == 0 ? "unknown/stale" :
+            telemetry == 1 ? "disconnected" : "connected");
+        g_promptTelemetryShown = telemetry;
+    }
+    nbt::ConnectionPrompt::Effect effect = g_connectionPrompt.poll(now, promptEnabled(), phone.known,
+        phone.connected, promptBlocked(), daemon.pid != 0 || controlPortBusy());
+    if (effect == nbt::ConnectionPrompt::SHOW && !promptEvent(app, true)) g_connectionPrompt.dismiss();
+    else if (effect == nbt::ConnectionPrompt::HIDE) promptEvent(app, false);
+}
+
+void showPromptSetting(bmw::PluginApp* app) {
+    app->updateModel(kPromptModel, promptEnabled());
+    g_promptSettingShown = true;
+}
+
+bool onPromptToggle(void* self, const bmw::Parcel&) {
+    bmw::PluginApp* app = static_cast<bmw::PluginApp*>(self);
+    if (fileExists(kPromptFlag)) {
+        if (unlink(kPromptFlag) != 0) alog("connection prompt: cannot remove setting (errno %d)", errno);
+    } else {
+        mkdir(kAutostartDir, 0755);
+        int fd = open(kPromptFlag, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        if (fd >= 0) { ssize_t written = write(fd, "1\n", 2); (void)written; close(fd); }
+        else alog("connection prompt: cannot save setting (errno %d)", errno);
+    }
+    if (!promptEnabled()) { closePrompt(app); stopPhoneWatch(); }
+    char selected[18];
+    alog("connection prompt: %s; selected Android phone %s; automatic startup is deferred while asking is enabled",
+         promptEnabled() ? "enabled" : "disabled", selectedPromptPhone(selected) ? "configured" : "missing (set /var/opt/aa/prompt-phone)");
+    showPromptSetting(app);
+    return true;
+}
+
+bool onPromptTest(void* self, const bmw::Parcel&) {
+    bmw::PluginApp* app = static_cast<bmw::PluginApp*>(self);
+    DaemonState d = readDaemonState();
+    if (!g_promptUnsupported && g_connectionPrompt.test(nowMs(), promptBlocked(), d.pid != 0 || controlPortBusy())) {
+        if (!promptEvent(app, true)) g_connectionPrompt.dismiss();
+    } else alog("connection prompt: test deferred (car state unknown/busy, daemon running, or popup already requested)");
+    return true;
+}
+
+bool onPromptDismiss(void* self, const bmw::Parcel&) {
+    closePrompt(static_cast<bmw::PluginApp*>(self));
+    return true;
+}
+
+bool onPromptOpen(void* self, const bmw::Parcel&) {
+    bmw::PluginApp* app = static_cast<bmw::PluginApp*>(self);
+    if (!g_connectionPrompt.visible()) return true; // stale/duplicate callback
+    nbt::PhoneWatchState phone = readPhoneWatchState(nowMs());
+    bool allowed = !promptBlocked() && (g_connectionPrompt.manual() ||
+        (promptEnabled() && phone.known && phone.connected));
+    closePrompt(app);
+    if (!allowed) { alog("connection prompt: Open ignored (phone disconnected or car busy)"); return true; }
+    bootGuardReset("connection prompt Open");
+    startDaemonOrShow();
+    g_entryStart = true;
+    app->triggerEvent(kEvOpenMenu);
+    return true;
+}
+
+bool onPromptFocus(void*, const bmw::Parcel& value) {
+    bool focused = false;
+    value.readBool(focused);
+    if (focused && g_connectionPrompt.visible()) g_promptFocusSeen = true;
+    else if (!focused && g_promptFocusSeen) {
+        // BACK/native dismissal must not cause the same connection to prompt again.
+        closePrompt(g_runApp);
+    }
+    return true;
+}
+
 // ---- start with the car --------------------------------------------------------------------------------------------
 time_t g_initTime = 0;
 bool g_autostartDone = false;
@@ -1895,6 +2130,7 @@ void serviceBootGuardSettle() {
 void serviceAutostart() {
     if (g_autostartDone || !g_initTime || time(NULL) - g_initTime < kAutostartDelayS) return;
     g_autostartDone = true;
+    if (promptEnabled()) { alog("start with the car: deferred to connection prompt"); return; }
     if (!autostartOn()) return;
     DaemonState d = readDaemonState();
     if (d.pid != 0) { alog("start with the car: nbt-aad already running (pid %d)", d.pid); return; }
@@ -1946,11 +2182,13 @@ void statusRun(void* /*self*/) {
     if (!g_usbAaShown) showUsbAa(app);
     if (!g_phoneGpsShown) showPhoneGps(app);
     if (!g_wfdOnlyShown) showWfdOnly(app);
+    if (!g_promptSettingShown) showPromptSetting(app);
     if (!g_stopPid) recoverScreenIfUnclean();            // killed / crashed outside Force Stop
     serviceStop();
     serviceAutostart();
     serviceBootGuardSettle();
     DaemonState d = readDaemonState();
+    serviceConnectionPrompt(app, d);
     bool connecting = !strcmp(d.state, "connecting"), connected = !strcmp(d.state, "connected");
 
     unsigned want = connecting ? kTextConnecting : kTextDefault;          // the Media/Radio entry row
@@ -2020,6 +2258,7 @@ bool onEntryAction(void* self, const bmw::Parcel& /*args*/) {
     // Fire event 53 from the app that owns our menu (g_runApp: the one whose events 50-52 are car-proven); `self` is
     // this entry's own pluginApp, which may be a separate instance without event 53.
     bmw::PluginApp* app = g_runApp ? g_runApp : static_cast<bmw::PluginApp*>(self);
+    closePrompt(app);
     DaemonState d = readDaemonState();
     bool connected = d.pid != 0 && !strcmp(d.state, "connected");
     nbt::entrykey::Action a = nbt::entrykey::decide(d.pid != 0, connected, d.pid != 0 && d.overlay != 0, g_stopPid != 0);
@@ -2061,6 +2300,7 @@ bool guardedByOverlay(const char* what) {
 bool onStartRow(void*, const bmw::Parcel&) {
     alog("menu: Start (raAction %u)", kActStart);
     if (g_stopPid) { alog("start ignored: a stop/restart is in progress"); return true; }
+    closePrompt(g_runApp);
     bootGuardReset("menu Start");
     startDaemonOrShow();
     return true;
@@ -2129,7 +2369,8 @@ bool onSettingsFocus(void*, const bmw::Parcel& p) {
         showUsbAa(g_app);
         showPhoneGps(g_app);
         showWfdOnly(g_app);
-        alog("settings: nine checkbox models refreshed");
+        showPromptSetting(g_app);
+        alog("settings: ten checkbox models refreshed");
     }
     return true;
 }
@@ -2167,6 +2408,10 @@ bool appOnInit(bmw::PluginApp* self) {
     addAction(self, kActUsbAa, &onUsbAaToggle);
     addAction(self, kActPhoneGps, &onPhoneGpsToggle);
     addAction(self, kActWfdOnly, &onWfdOnlyToggle);
+    addAction(self, kActPrompt, &onPromptToggle);
+    addAction(self, kActPromptTest, &onPromptTest);
+    addAction(self, kActPromptOpen, &onPromptOpen);
+    addAction(self, kActPromptDismiss, &onPromptDismiss);
     g_initTime = time(NULL);
     {
         bmw::ActionDelegate d;
@@ -2185,6 +2430,10 @@ bool appOnInit(bmw::PluginApp* self) {
         v.object = self;
         v.stub = &onAaVisible;
         self->addHandler(kAaState, kHandlerVisible, v);
+        bmw::ActionDelegate p;
+        p.object = self;
+        p.stub = &onPromptFocus;
+        self->addHandler(kPromptState, kHandlerFocus, p);
     }
     bool ok = self->onInit();
     showAbout(self);
@@ -2204,6 +2453,8 @@ void appOnError(bmw::PluginApp* /*self*/, unsigned code, const bmw::BasicString<
 
 void appOnFinalize(bmw::PluginApp* self) {
     alog("onFinalize");
+    closePrompt(self);
+    stopPhoneWatch();
     g_runApp = NULL;
     self->onFinalize();
 }

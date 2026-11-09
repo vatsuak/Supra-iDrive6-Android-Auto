@@ -9,6 +9,7 @@
 
 ROOT := ..
 OUT  := build
+.DEFAULT_GOAL := all
 
 HOST_CXX ?= g++
 HOST_CC  ?= gcc
@@ -43,6 +44,10 @@ SRC_test_ccs_decoder       :=
 SRC_test_ccs_input         := src/car/ccs_input.cpp src/most/client.cpp tests/fake_dsi_client.cpp
 SRC_test_ccs_push          :=
 SRC_test_cds_parse         :=
+SRC_test_connection_prompt :=
+SRC_test_connection_prompt_app :=
+SRC_test_entry_key         :=
+SRC_test_phone_watch       := src/phone_watch.cpp tests/fake_dsi_client.cpp
 SRC_test_ctl_wizard        :=
 SRC_test_input_activity    := src/car/input_activity.cpp src/car/ccs_input.cpp src/most/client.cpp tests/fake_dsi_client.cpp
 SRC_test_kombi_graph       :=
@@ -91,10 +96,19 @@ ARGS_test_ccs_input   := tests/fixtures/controls_2026-10-23_push.txt
 
 TESTS := $(patsubst SRC_%,%,$(filter SRC_test_%,$(.VARIABLES)))
 
+# These tests do not need OpenSSL; they also run with Apple clang on macOS.
+$(addprefix $(OUT)/,test_connection_prompt test_connection_prompt_app test_entry_key test_phone_watch): LDLIBS = -lpthread
+ifeq ($(shell uname -s),Darwin)
+$(OUT)/test_connection_prompt_app: LDLIBS += -Wl,-export_dynamic
+else
+$(OUT)/test_connection_prompt_app: LDLIBS += -ldl -Wl,--export-dynamic
+endif
+$(OUT)/test_connection_prompt_app: $(ROOT)/rhmiapp/nbt_aad_app.cpp
+
 .PHONY: all check tsan clean $(TESTS) $(addprefix run-,$(TESTS)) run-test_media_payload run-test_aa_proto32 run-test_schema
 all: $(TESTS)
 
-check: $(addprefix run-,$(TESTS)) run-test_aa_proto32 run-test_media_payload run-test_schema tsan
+check: $(addprefix run-,$(TESTS)) run-test_aa_proto32 run-test_media_payload run-test_schema run-test_connection_prompt_resources run-test_phone_watch_process tsan
 	@echo "[CHECK] all host tests passed"
 
 $(OUT):
@@ -126,6 +140,19 @@ $(OUT)/test_session_bye: CXXFLAGS += -include stub_cryptor.hpp
 
 # Not here: rhmiapp_host_test, which dlopens a host build of rhmiapp/libNbtAad.so linked against
 # rhmiapp_fake_appframework.cpp.
+
+.PHONY: check-connection-prompt run-test_connection_prompt_resources
+check-connection-prompt: run-test_connection_prompt run-test_connection_prompt_app run-test_phone_watch run-test_entry_key run-test_connection_prompt_resources run-test_phone_watch_process
+
+run-test_connection_prompt_resources:
+	@cd $(ROOT) && python3 tests/test_connection_prompt_resources.py
+
+.PHONY: run-test_phone_watch_process
+$(OUT)/nbt-phone-watch-host: $(ROOT)/tools/nbt_phone_watch.cpp $(ROOT)/src/phone_watch.cpp fake_dsi_client.cpp $(ROOT)/src/phone_watch.hpp $(ROOT)/src/gap_parse.hpp | $(OUT)
+	$(HOST_CXX) $(CXXFLAGS) -o $@ $(filter %.cpp,$^) -lpthread
+
+run-test_phone_watch_process: $(OUT)/nbt-phone-watch-host
+	@cd $(ROOT) && python3 tests/test_phone_watch_process.py tests/$(OUT)/nbt-phone-watch-host
 
 # Compiles the payload-boundary block out of aa_session.cpp itself.
 run-test_media_payload:

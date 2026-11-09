@@ -2,7 +2,10 @@
 # SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 # Builds NbtAad_ALL_Texts.zip (<lang>.txt with "id=text" lines, same format as BMW's PluginsCoded apps)
 # and NbtAad_ALL_Images.zip (<imageId>.png).
-import os, zipfile
+import argparse, os, zipfile
+parser = argparse.ArgumentParser(description="Build the native iDrive text/image resources")
+parser.add_argument("--texts-only", action="store_true", help="Update texts without rewriting unchanged images")
+args = parser.parse_args()
 HERE = os.path.dirname(os.path.abspath(__file__))
 LANGS = {"de": "Deutsch", "en-UK": "English (UK)", "en-US": "English (US)", "es-ES": "Espanol", "es-US": "Espanol (US)",
          "fr-FR": "Francais", "fr-CA": "Francais (CA)", "it": "Italiano", "pt": "Portugues", "ru": "Russian"}
@@ -25,6 +28,9 @@ TEXTS = {1: "Android Auto", 2: "Android Auto: Connecting...",   # 2 = entry text
          24: "Android Auto over USB (beta)",   # 24 = USB checkbox on the Settings page (rhmiapp-40)
          25: "Use Phone GPS",   # 25 = phone GPS checkbox on the Settings page (rhmiapp-44)
          26: "Use WiFi Direct Network",   # 26 = Wi-Fi Direct only checkbox on the Settings page (rhmiapp-44)
+         27: "Ask when phone connects (beta)",
+         28: "Test connection popup (beta)",
+         29: "Android Auto", 30: "Open Android Auto on this display?", 31: "Dismiss",
          17: ABOUT}
 # Per-language overrides (ASCII only, like the language names above).
 LANG_TEXTS = {
@@ -46,12 +52,15 @@ with zipfile.ZipFile(os.path.join(HERE, "NbtAad_ALL_Texts.zip"), "w", zipfile.ZI
         texts = dict(TEXTS)
         texts.update(LANG_TEXTS.get(lang, {}))
         body = "100000=%s\n" % langname + "".join("%d=%s\n" % (k, v) for k, v in sorted(texts.items()))
-        z.writestr(lang + ".txt", body.encode("utf-8"))
-icon = os.path.join(HERE, "..", "plugin", "res", "aa_row_icon_63x54.png")
-preview = os.path.join(HERE, "..", "plugin", "res", "aa_content_preview_549x484.png")
-with zipfile.ZipFile(os.path.join(HERE, "NbtAad_ALL_Images.zip"), "w", zipfile.ZIP_DEFLATED) as z:
-    z.write(icon, "55001.png")                      # 63x54 row icon (imageIdModel 4)
-    z.write(preview, "55002.png")                   # 549x484 content preview (imageIdModel 12, StatePreview 13)
-    for f in range(8):                              # 55010..55017: entry-row "connecting" spinner frames (rhmiapp-6)
-        z.write(os.path.join(HERE, "..", "plugin", "res", "spinner", "spin_%d.png" % f), "%d.png" % (55010 + f))
-print("wrote NbtAad_ALL_Texts.zip, NbtAad_ALL_Images.zip")
+        entry = zipfile.ZipInfo(lang + ".txt", (1980, 1, 1, 0, 0, 0))
+        entry.compress_type = zipfile.ZIP_DEFLATED
+        z.writestr(entry, body.encode("utf-8"))
+if not args.texts_only:
+    icon = os.path.join(HERE, "..", "plugin", "res", "aa_row_icon_63x54.png")
+    preview = os.path.join(HERE, "..", "plugin", "res", "aa_content_preview_549x484.png")
+    with zipfile.ZipFile(os.path.join(HERE, "NbtAad_ALL_Images.zip"), "w", zipfile.ZIP_DEFLATED) as z:
+        z.write(icon, "55001.png")
+        z.write(preview, "55002.png")
+        for f in range(8):
+            z.write(os.path.join(HERE, "..", "plugin", "res", "spinner", "spin_%d.png" % f), "%d.png" % (55010 + f))
+print("wrote NbtAad_ALL_Texts.zip" + ("" if args.texts_only else ", NbtAad_ALL_Images.zip"))

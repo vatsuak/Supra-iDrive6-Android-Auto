@@ -101,7 +101,17 @@ RHMI_LIBS = $(wildcard $(RHMI_LIBDIR)/libAppFramework.A.so $(RHMI_LIBDIR)/libCor
 .PHONY: rhmiapp
 rhmiapp: rhmiapp/libNbtAad.so
 
-rhmiapp/libNbtAad.so: rhmiapp/nbt_aad_app.cpp
+.PHONY: connection-prompt
+connection-prompt: rhmiapp nbt-phone-watch rhmiapp/NbtAad_ALL_Texts.zip
+
+rhmiapp/NbtAad_ALL_Texts.zip: rhmiapp/make_db.py
+	python3 rhmiapp/make_db.py --texts-only
+
+# Read-only Bluetooth observer, isolated from HmiMain3D and the installed daemon.
+nbt-phone-watch: tools/nbt_phone_watch.cpp src/phone_watch.cpp src/phone_watch.hpp src/phone_watch_state.hpp src/gap_parse.hpp src/dsi_client.cpp src/dsi_client.hpp
+	$(CXX) $(CXXFLAGS) -o $@ tools/nbt_phone_watch.cpp src/phone_watch.cpp src/dsi_client.cpp -lsocket -lang-c++
+
+rhmiapp/libNbtAad.so: rhmiapp/nbt_aad_app.cpp rhmiapp/connection_prompt.hpp src/phone_watch.hpp src/phone_watch_state.hpp
 	@echo [BUILD] PluginApp $@
 	$(PLUGIN_CXX) $(PLUGIN_CXXFLAGS) -shared -Wl,-soname,libNbtAad.so -o $@ rhmiapp/nbt_aad_app.cpp $(RHMI_LIBS) -Wl,--allow-shlib-undefined -lang-c++
 	@echo [DONE] Built $@ - install with NbtAad.manifest, NbtAad.xml, NbtAad_ALL_*.zip into Plugins/NbtAad
@@ -156,7 +166,7 @@ volcap: tools/volcap.cpp src/dsi_client.cpp src/dsi_client.hpp src/most/ids.hpp 
 
 clean:
 	@echo [CLEAN] Removing object files and binaries
-	rm -f $(OBJS) $(OBJS:.o=.d) $(TARGET) test_display test_controls plugin/libhmiaad.so plugin/plugin_check wfd_probe pf_aa
+	rm -f $(OBJS) $(OBJS:.o=.d) $(TARGET) test_display test_controls plugin/libhmiaad.so plugin/plugin_check wfd_probe pf_aa nbt-phone-watch
 
 # osdprobe: standalone check that this unit lets us own an LM surface for our own window.
 osdprobe: tools/osdprobe.cpp

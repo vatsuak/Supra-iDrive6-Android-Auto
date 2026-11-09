@@ -22,6 +22,10 @@
       <raAction id="83"/>
       <raAction id="87"/>
       <raAction id="91"/>
+      <raAction id="120"/>
+      <raAction id="121"/>
+      <raAction id="122"/>
+      <raAction id="123"/>
     </actions>
     <models>
       <textIdModel id="3" textId="1">
@@ -84,12 +88,21 @@
       <textIdModel id="93" textId="26">
         <synonyms/>
       </textIdModel>
+      <raBoolModel id="124"/>
+      <textIdModel id="125" textId="27"><synonyms/></textIdModel>
+      <textIdModel id="126" textId="28"><synonyms/></textIdModel>
+      <textIdModel id="127" textId="29"><synonyms/></textIdModel>
+      <textIdModel id="128" textId="30"><synonyms/></textIdModel>
+      <textIdModel id="129" textId="14"><synonyms/></textIdModel>
+      <textIdModel id="130" textId="31"><synonyms/></textIdModel>
     </models>
     <events>
       <focusEvent id="50" targetModel="40"/>
       <focusEvent id="51" targetModel="41"/>
       <focusEvent id="52" target="13"/>
       <focusEvent id="53" target="10"/>
+      <!-- Experimental native RHMI popup. Low priority; no factory CarPlay events are fired. -->
+      <popupEvent id="131" target="132" priority="0"/>
     </events>
     <hmiStates>
       <hmiState id="10" text="Android Auto" textModel="3">
@@ -163,8 +176,18 @@
           <checkbox action="83" id="86" model="84" text="Android Auto over USB (beta)" textModel="85"/>
           <checkbox action="87" id="90" model="88" text="Use Phone GPS" textModel="89"/>
           <checkbox action="91" id="94" model="92" text="Use WiFi Direct Network" textModel="93"/>
+          <checkbox action="120" id="133" model="124" text="Ask when phone connects (beta)" textModel="125"/>
+          <button action="121" id="134" model="126" text="Test connection popup (beta)"/>
         </components>
       </hmiState>
+      <!-- Append only: the existing native state ids and favourite-key UUID stay stable. -->
+      <popupHmiState id="132" text="Android Auto" textModel="127">
+        <components>
+          <label id="135" model="128"/>
+          <button action="122" id="136" model="129" imageModel="4" text="Open Android Auto"/>
+          <button action="123" id="137" model="130" text="Dismiss"/>
+        </components>
+      </popupHmiState>
     </hmiStates>
   </pluginApp>
   <!-- One-press entry "Open Android Auto" (raAction 2), right after the menu entry. Property 55 is its UUID: without
