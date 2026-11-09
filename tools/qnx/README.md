@@ -5,10 +5,10 @@ popup. It does not modify the car. The full QNX SDK and activated license are
 user-supplied runtime mounts; neither is downloaded, committed, or baked into the
 image. Python 3.8+ is required on the host.
 
-Validated on 2026-11-08 with an Apple Silicon Mac: the amd64 VM/image build,
-32-bit Linux loader, six focused popup test groups in Linux, and nine setup/
-packaging checks passed. The QNX compiler probes and actual ARM build remain
-untested because no licensed SDK is installed. No head-unit test was performed.
+Validated locally on 2026-11-09 with an Apple Silicon Mac: the amd64 VM/image,
+32-bit Linux loader, both QNX ARM C++ compiler probes, actual popup ARM build,
+six focused popup test groups in Linux, and nine setup/packaging checks passed.
+No head-unit test was performed. SDK/license files remain private and ignored.
 
 ## Obtain the missing compiler and license
 
@@ -22,8 +22,8 @@ serves SDP 7/8; those SDKs are not drop-in replacements for this repository's 6.
 Use QNX's [6.5 Linux installation guide](https://www.qnx.com/developers/articles/inst_4225_6.html)
 and [official activation instructions](https://www.qnx.com/account/product_activation.html).
 Complete installation/activation in an environment supported by QNX. The container
-below is a compatibility build environment; it has not been validated as a QNX
-installer/activation host. QNX's documented 6.5 host platforms predate Ubuntu 22.04.
+below is a compatibility build environment. The standard installer and compiler
+worked locally on Ubuntu 22.04; this is not a QNX support certification.
 An activated license may have host restrictions: confirm its permitted use inside
 this VM with QNX. Keep the license private.
 
@@ -63,13 +63,12 @@ qnxsdp-6.5.0-201007091524-linux.bin
 qnx_linux_setup.jar
 ```
 
-These are installation media, **not an installed SDK**. No installer or compiler
-was executed during inspection. The archive's unrelated key generator was not
-extracted or used. A suitable QNX 6.5 license is still required; the current
-QNX Everywhere account/license does not by itself establish legacy entitlement.
-Use QNX's installation/activation process with an appropriate license, then point
-`configure` at the resulting installed SDK root. Compiler/runtime compatibility
-with this container remains unverified until `verify-sdk` succeeds.
+These files are installation media, **not themselves an installed SDK**. Static
+inspection was followed by a separate local installation and successful compiler
+checks. A suitable QNX 6.5 license is required; the current QNX Everywhere account
+does not by itself establish legacy entitlement. Keep installation credentials
+private and point `configure` at the resulting installed SDK root. On another
+machine, verify compiler/runtime compatibility with `verify-sdk`.
 
 ## Prepare this Mac
 
@@ -132,6 +131,12 @@ probes cannot validate the car's native popup renderer, focus behavior or warnin
 priorities. The feature remains experimental and defaults off.
 
 ## Troubleshooting and stopping
+
+For the optional standalone native menu tile, use `python3 tools/qnx/setup.py
+build-tile`, then `python3 tools/qnx/tile.py package --output /path/to/tile.zip`.
+It builds a separate C helper for a temporary RAM test, without rebuilding or
+packaging the daemon/plugin. Read [the tile guide](../tile/README.md) first.
+Firmware compatibility still requires a head-unit test.
 
 ```sh
 python3 tools/qnx/setup.py doctor       # missing SDK/license is expected until supplied

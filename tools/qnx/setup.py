@@ -203,7 +203,7 @@ def configure(args):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    for name in ("init", "start", "image", "doctor", "base-check", "verify-sdk", "test", "build", "shell", "stop"):
+    for name in ("init", "start", "image", "doctor", "base-check", "verify-sdk", "test", "build", "build-tile", "shell", "stop"):
         commands.add_parser(name)
     config = commands.add_parser("configure")
     config.add_argument("--sdk-dir")
@@ -240,6 +240,9 @@ def main(argv=None):
             source = run([sys.executable, "tools/qnx/package.py", "fingerprint"], capture=True).stdout.strip()
             container(["make", "-B", "-C", "milestone-7", "connection-prompt"], sdk=True)
             run([sys.executable, "tools/qnx/package.py", "record", "--source-sha256", source])
+        elif args.command == "build-tile":
+            from tile import build
+            build()
         elif args.command == "package":
             run([sys.executable, "tools/qnx/package.py", "package", "--output", args.output])
         elif args.command == "stop":

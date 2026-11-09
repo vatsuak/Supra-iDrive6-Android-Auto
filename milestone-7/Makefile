@@ -104,6 +104,10 @@ rhmiapp: rhmiapp/libNbtAad.so
 .PHONY: connection-prompt
 connection-prompt: rhmiapp nbt-phone-watch rhmiapp/NbtAad_ALL_Texts.zip
 
+# Optional standalone CarLife tile helper; never part of the default build.
+aa-tile: tools/aa_tile.c
+	$(CC) -O2 -Wall -Wextra -D_QNX_SOURCE -Wc,-std=gnu99 -march=armv7-a -mfpu=vfpv3 -mfloat-abi=softfp -o $@ $< -lsocket
+
 rhmiapp/NbtAad_ALL_Texts.zip: rhmiapp/make_db.py
 	python3 rhmiapp/make_db.py --texts-only
 
@@ -166,7 +170,7 @@ volcap: tools/volcap.cpp src/dsi_client.cpp src/dsi_client.hpp src/most/ids.hpp 
 
 clean:
 	@echo [CLEAN] Removing object files and binaries
-	rm -f $(OBJS) $(OBJS:.o=.d) $(TARGET) test_display test_controls plugin/libhmiaad.so plugin/plugin_check wfd_probe pf_aa nbt-phone-watch
+	rm -f $(OBJS) $(OBJS:.o=.d) $(TARGET) test_display test_controls plugin/libhmiaad.so plugin/plugin_check wfd_probe pf_aa nbt-phone-watch aa-tile
 
 # osdprobe: standalone check that this unit lets us own an LM surface for our own window.
 osdprobe: tools/osdprobe.cpp
