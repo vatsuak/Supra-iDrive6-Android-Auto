@@ -106,6 +106,11 @@ controller focus. There is no iDrive emulator included in this repository.
 
 ## QNX build
 
+For a prepared macOS/Linux container environment, see the
+[local QNX setup guide](../tools/qnx/README.md). It supplies the public container
+dependencies and build/packaging commands; you must obtain the full ARM-capable
+QNX SDP 6.5 SDK and activated license separately.
+
 With the existing QNX SDP 6.5 ARMv7 toolchain/Docker image and a valid SDK license:
 
 ```sh

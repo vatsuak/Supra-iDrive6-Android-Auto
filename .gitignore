@@ -11,3 +11,7 @@ milestone-7/test_controls
 milestone-7/test_display
 milestone-7/nbt-phone-watch
 milestone-7/tests/build/
+milestone-7/tests/build-linux/
+.local/qnx/
+dist/
+__pycache__/

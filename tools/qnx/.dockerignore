@@ -1,0 +1,4 @@
+# Explicit allowlist: SDKs, credentials and local state cannot enter this context.
+**
+!Dockerfile
+!container.sh
