@@ -1,0 +1,27 @@
+Standalone tile helper provenance
+
+Source: https://github.com/deathwalker80/nbt-aa-tile
+Revision: e2821cc440920034ce9a2b170d98ca4880621e37
+Original file: src/aa_tile.c
+Original SHA256: 0d42b2a8286ee98bdd335e5a7dd81d59dd636048e974708fd389f2452cde5663
+License: PolyForm Noncommercial 1.0.0 (repository LICENSE.md; included in package).
+Required Notice: Copyright (c) 2026 nanaisu - NBT-AAD (https://github.com/Sq00ky/Supra-iDrive6-Android-Auto)
+
+Credits: RRudkinp discovered the CarLife MOST mechanism; deathwalker80 wrote the
+standalone helper; NBT-AAD supplies the original DSI/MOST client approach.
+Keukenrol123522 maintained the separate in-daemon tile port.
+
+Local adaptations:
+- Compile/link with QNX SDP 6.5 headers and runtime, rather than handwritten
+  system prototypes, custom startup code, or link-only stub libraries.
+- Use native sockaddr_in and signal constants.
+- Strict arguments, live daemon PID and exact connected state, controller-source
+  validation, and suppression of tile presses while hidden/stopping.
+- Kernel-held RAM instance lock; default 120-second duration.
+- Report send/cleanup errors; fatal signals write only to the RAM log.
+
+Firmware-specific DSI object offsets and vtable slots remain experimental.
+This does not establish Supra hardware compatibility, arbitrate a real CarLife
+session, or add phone name/battery fields or Android Auto artwork/labels.
+
+Stable v1.9.33 adaptation: helper version label only; daemon/plugin sources unchanged.

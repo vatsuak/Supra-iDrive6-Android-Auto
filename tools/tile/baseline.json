@@ -1,0 +1,18 @@
+{
+  "release_id": 437016300,
+  "release_name": "USB In Menu - v1.9.33",
+  "release_url": "https://github.com/Sq00ky/Supra-iDrive6-Android-Auto/releases/tag/Installer",
+  "published_at": "2026-11-06T20:48:47Z",
+  "daemon_build_marker": "v1.9.33-usbpr66",
+  "daemon_sha256": "791a8339d09eeae87ba28f88c23cb8811cd9990704eb587e2bcbfad63982565d",
+  "daemon_posix_cksum": 1646419161,
+  "daemon_bytes": 769172,
+  "source_snapshot": "5860e56c17bdc06f17ae3b68f91d015c412c61a2",
+  "source_snapshot_build_marker": "v1.9.33-usbset",
+  "source_note": "The moving Installer tag points to older v1.8.52 source. This branch uses the v1.9.33 source snapshot whose manifest/XML/image/text resources match the official release exactly. Its daemon build marker differs from the published binary; no claim of reproducing that binary is made. The official daemon/plugin binaries are preserved unchanged and the launcher is a separate executable.",
+  "unmodified_source_sha256": {
+    "milestone-7/src/main.cpp": "91db1fa4e368e4c1d16975f00cd7bf4a793b8a0785c3627733879fe422a435a6",
+    "milestone-7/rhmiapp/nbt_aad_app.cpp": "0c89002a98922479314ba381a82460db78182ac8606bdf199ec70a00a9ec8133"
+  },
+  "hardware_tested": false
+}
