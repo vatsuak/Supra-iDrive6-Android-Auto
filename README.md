@@ -50,3 +50,9 @@ The code needs to be compatible with Armv7LE. I built it with [QNX Momentics](ht
 ### Feeling Generous?
 I don't charge for this project, I don't charge for deployments, if this has helped you and you're feeling generous, here's my paypal: https://paypal.me/banananaisu
 Please do not feel obligated to send me anything. I've had a couple people ask, if it makes you feel better, you can buy me a drink. I like Red Wine & Bourbon :) My goal in this was never to make any money. It is to provide a cheap/low cost solution so we don't have to deal with MMI products & don't have to deal with people selling native Android Auto integrations.
+
+## Optional v1.9.91 native tile RAM test
+
+This branch adds a separate 120-second CarLife-backed tile helper alongside the
+official v1.9.91 daemon. See [the tile guide](tools/tile/README.md). The daemon,
+plugin and HMI resources are unchanged; head-unit testing remains outstanding.
