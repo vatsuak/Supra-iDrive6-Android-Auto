@@ -1,0 +1,24 @@
+{
+  "files": {
+    "nbt-aad": "69ba881f56ea3c1bc0a05d37c7f044c4d238f8dff1e5ba61d7030bd0be316044",
+    "rhmiapp/libNbtAad.so": "e2ad3744a58be6489f8578cb2faacc42ac43af92bb8b875a613985aaddcd1a86",
+    "aa-tile": "2202da0288f21a338399863d89cf088a46253b27733ce750389e549db88d1b86"
+  },
+  "daemonCksum": "2636107787",
+  "daemonSize": 1021938,
+  "authorizedWorkflows": [],
+  "accessedWorkflows": [],
+  "sourceHashes": {
+    "src/main.cpp": "cdea3b12ae40d7cf5622b5569f100a3660a8592689ebd81670f652eca6426b81",
+    "src/background_connect.hpp": "1437990d22775e80a5801339d9c60fdaf396b82ca32085130588f91b976c8da4",
+    "src/connection_options.hpp": "acf5a9519e725ffcc4764c50eaccfa12def6ff92860dfefdccb923fde56ed9fc",
+    "rhmiapp/controls_entry.hpp": "83ffcc5521c90f0e99357d5fa0e50d44fa35860ef2c6784aa4ebe5208b89b78b",
+    "rhmiapp/nbt_aad_app.cpp": "2e4fac4594818db097b647b5cab299a7565656884061448dce0643d0f0780e8c",
+    "rhmiapp/NbtAad.xml": "3f68cd3ccca34ac1c2b6edbe8fd52e7ebb2d09ce13d6bb801017a3d176839dbc",
+    "rhmiapp/NbtAad_ALL_Texts.zip": "f23cc58ad75f7f9f78d3f3c98825c87d7494573248c0e7ccb5f68df4d255e22b",
+    "rhmiapp/make_db.py": "576d8e74240ea7a746b2e783f7697c94fdc7f63719e4eb0f639ca540fd5393a5",
+    "tools/aa_tile.c": "a8b934e31e3733f60cf277d48ea815bfb5f9d87e3108902e0279381afc90ff6c",
+    "Makefile": "ceb991f5fce594d7ed8638e874a7171b69e0fdedad1d4945485f7288386fd858"
+  },
+  "baseCommit": "8d025cf4cd415946767f026ca5ff13e8b701047f"
+}

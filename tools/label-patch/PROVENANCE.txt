@@ -1,0 +1,24 @@
+Offline BMW text.db tools — provenance
+
+The Python NRV2D decompression routine is adapted from the UCL implementation:
+https://github.com/korczis/ucl/blob/master/src/n2d_d.c
+Copyright (C) 1996-2002 Markus Franz Xaver Johannes Oberhumer.
+UCL is licensed GPL version 2 or later; COPYING is included.
+These standalone tools are distributed under GPL-2.0-or-later and are separate
+from the PolyForm-licensed Android Auto daemon/plugin project.
+
+Reference source archive downloaded from:
+https://codeload.github.com/korczis/ucl/tar.gz/refs/heads/master
+SHA256: 6ad56ed82ff450fd6ffbe040f6881eda12c5f1c326bcbf148de6e46192fb736a
+Download the archive from the URL above and verify the pinned SHA256 before building.
+The public fork does not contain the archive or any BMW firmware resources.
+Reference nrv2d_99 compressor used at level 10, default 8-bit bit buffer.
+Reference safe NRV2D decoder independently checked all 35 original payloads and
+both recompressed English payloads against the Python implementation.
+
+Container structure was derived from the user's verified 2026-11-18 backups.
+No firmware code, executables, activation data or credentials are used by the tool.
+Database resources are the user's backups and candidate derivative; the GPL license
+here covers the standalone tooling/UCL, not the original firmware resource text.
+
+Authorized workflows: none. Accessed workflows: none. Subagents: none.

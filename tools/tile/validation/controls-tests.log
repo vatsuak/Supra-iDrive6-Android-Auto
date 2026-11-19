@@ -1,0 +1,1 @@
+PASS: controls ACK, stale states, retries, timeout, stopped daemon, cancellation, wrap, explicit reopening

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 # Builds NbtAad_ALL_Texts.zip (<lang>.txt with "id=text" lines, same format as BMW's PluginsCoded apps)
 # and NbtAad_ALL_Images.zip (<imageId>.png).
-import os, zipfile
+import os, sys, zipfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 LANGS = {"de": "Deutsch", "en-UK": "English (UK)", "en-US": "English (US)", "es-ES": "Espanol", "es-US": "Espanol (US)",
          "fr-FR": "Francais", "fr-CA": "Francais (CA)", "it": "Italiano", "pt": "Portugues", "ru": "Russian"}
@@ -11,13 +11,13 @@ ABOUT = ("NBT-AAD: native wireless Android Auto\\nDeveloped by nanaisu\\n"
          "@ryanriccio1, @pstryju, @owenashurst, @BobW5, @DreckSoft\\n"
          "github.com/Sq00ky/Supra-iDrive6-Android-Auto\\n"
          "Free of charge. If you paid for it, you were scammed.")
-TEXTS = {1: "Android Auto", 2: "Android Auto: Connecting...",   # 2 = entry text while nbt-aad is connecting
+TEXTS = {50: "Open Android Auto automatically", 49: "Show Android Auto tile", 1: "Android Auto", 2: "Android Auto: Connecting...",   # 2 = entry text while nbt-aad is connecting
          # Android Auto menu (hmiState 10): row 1 changes with the daemon state (10 / 13 / 14)
-         10: "Start Android Auto", 11: "Force Stop", 12: "Restart", 13: "Connecting...", 14: "Open Android Auto",
+         10: "Connect Android Auto", 11: "Force Stop", 12: "Restart", 13: "Connecting...", 14: "Open Android Auto",
          # 15 = "start at boot" checkbox, 16 = About row / page title, 17 = About page text (hmiState 12): a Richtext
          # list wraps it to the screen width; "\n" (backslash + n in the .txt) is a line break, as in BMW's own
          # ActiveSeating text 88. English only.
-         15: "Start automatically", 16: "About", 18: "Save logs to USB",   # 18 = log checkbox (rhmiapp-10)
+         15: "Connect automatically", 16: "About", 18: "Save logs to USB",   # 18 = log checkbox (rhmiapp-10)
          19: "MENU key opens iDrive",   # 19 = MENU key checkbox (rhmiapp-14)
          20: "Show driving mode changes",   # 20 = driving mode checkbox (rhmiapp-21)
          21: "Show navigation in HUD/gauge cluster",   # 21 = cluster/HUD arrows checkbox (kombi_nav); renamed in
@@ -59,8 +59,15 @@ with zipfile.ZipFile(os.path.join(HERE, "NbtAad_ALL_Texts.zip"), "w", zipfile.ZI
     for lang, langname in LANGS.items():
         texts = dict(TEXTS)
         texts.update(LANG_TEXTS.get(lang, {}))
+        # Updated controls use English fallback; preserve all unrelated translations.
+        for changed in (10, 15, 50): texts[changed] = TEXTS[changed]
         body = "100000=%s\n" % langname + "".join("%d=%s\n" % (k, v) for k, v in sorted(texts.items()))
-        z.writestr(lang + ".txt", body.encode("utf-8"))
+        info = zipfile.ZipInfo(lang + ".txt", (2026, 11, 18, 0, 0, 0))
+        info.compress_type = zipfile.ZIP_DEFLATED
+        z.writestr(info, body.encode("utf-8"))
+if "--texts-only" in sys.argv:
+    print("wrote NbtAad_ALL_Texts.zip; images unchanged")
+    sys.exit(0)
 icon = os.path.join(HERE, "..", "plugin", "res", "aa_row_icon_63x54.png")
 preview = os.path.join(HERE, "..", "plugin", "res", "aa_content_preview_549x484.png")
 with zipfile.ZipFile(os.path.join(HERE, "NbtAad_ALL_Images.zip"), "w", zipfile.ZIP_DEFLATED) as z:

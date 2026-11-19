@@ -32,15 +32,15 @@ class RamScriptTests(unittest.TestCase):
         self.folder = Path(self.temp.name)
         self.daemon.write_bytes(b"isolated baseline daemon fixture\n")
         self.addCleanup(lambda: self.daemon.unlink(missing_ok=True))
-        crc, size, _ = subprocess.check_output(["cksum", str(self.daemon)], text=True).split()
         runner = Path(__file__).with_name("test-ram.sh").read_text()
-        runner = runner.replace("1810084051", crc).replace("1021153", size)
         (self.folder / "test-ram.sh").write_text(runner)
         self.state.write_text("connected " + str(os.getpid()) + " 0\n")
         self.addCleanup(lambda: self.state.unlink(missing_ok=True))
 
     def helper(self, body):
-        data = "#!/bin/sh\n" + body + "\n"
+        data = ('#!/bin/sh\nif [ "$1" = verify-baseline ]; then\n'
+                '  [ "$(cat /opt/aa/nbt-aad 2>/dev/null)" = "isolated baseline daemon fixture" ]; exit $?\n'
+                'fi\n' + body + '\n')
         (self.folder / "aa-tile").write_text(data)
         (self.folder / "aa-tile.size").write_text(str(len(data.encode())) + "\n")
 
@@ -75,31 +75,13 @@ class RamScriptTests(unittest.TestCase):
         self.helper('echo "must not run"')
         self.daemon.write_bytes(b"a different installed version")
         p = self.run_script("follow")
-        self.assertEqual(p.returncode, 1, p.stdout + p.stderr)
+        self.assertEqual(p.returncode, 7, p.stdout + p.stderr)
         self.assertIn("differs", p.stdout)
         self.assertFalse((self.folder / "test1.log").exists())
         self.daemon.unlink()
         p = self.run_script("always")
-        self.assertEqual(p.returncode, 1, p.stdout + p.stderr)
-        self.assertIn("Cannot read", p.stdout)
-
-    def test_official_version_guard(self):
-        reference = os.environ.get("AA_TILE_OFFICIAL_FIXTURES")
-        if not reference:
-            self.skipTest("Provide official release fixtures for the independent production-guard test")
-        reference = Path(reference)
-        # Unlike the other fixture tests, execute the production runner unchanged.
-        shutil.copyfile(Path(__file__).with_name("test-ram.sh"), self.folder / "test-ram.sh")
-        self.helper('echo "accepted official v1.9.91"')
-        shutil.copyfile(reference / "nbt-aad-v1.9.91", self.daemon)
-        p = self.run_script("follow")
-        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
-        self.assertIn("accepted official v1.9.91", (self.folder / "test1.log").read_text())
-        shutil.copyfile(reference / "nbt-aad-v1.9.33", self.daemon)
-        p = self.run_script("follow")
-        self.assertEqual(p.returncode, 1, p.stdout + p.stderr)
+        self.assertEqual(p.returncode, 7, p.stdout + p.stderr)
         self.assertIn("differs", p.stdout)
-        self.assertFalse((self.folder / "test2.log").exists())
 
     def test_preserves_previous_usb_log(self):
         self.helper('echo "second test"')
@@ -116,7 +98,7 @@ class RamScriptTests(unittest.TestCase):
         self.addCleanup(lambda: p.kill() if p.poll() is None else None)
         deadline = time.monotonic() + 5
         while time.monotonic() < deadline:
-            logs = list(Path("/dev/shmem").glob("aa-tile-test.*/test.log"))
+            logs = list(Path("/dev/shmem").glob("aa-tile-test.*.log"))
             if any("child running" in log.read_text() for log in logs):
                 break
             time.sleep(.02)

@@ -1,0 +1,5 @@
+PASS: connection manual, screen manual
+PASS: connection manual, screen auto
+PASS: connection auto, screen manual
+PASS: connection auto, screen auto
+PASS: reconnect, deferred settings, explicit Open, idle and camera/PDC gates

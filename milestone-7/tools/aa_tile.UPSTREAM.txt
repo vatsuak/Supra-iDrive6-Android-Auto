@@ -30,3 +30,23 @@ v1.9.91 adaptation:
 - Match the release's DSI send convention: all nonzero sends fail.
 - Stop after a failed MOST client registration; report failed UDP launch sends.
 - Daemon, plugin, settings, startup and HMI resources remain unchanged.
+
+Permanent candidate (2026-11-18):
+- O_EXCL flat RAM PID lock replaces unsupported fcntl locking on the tested unit.
+- Managed mode follows a specific daemon PID, enabled checkbox and RHMI lease;
+  lease withdrawal/daemon exit/HMI death initiates cleanup. No relaunch loop.
+- Built-in POSIX CRC guard for exact official v1.9.91; this unit lacks cksum.
+- Managed packet logging is reduced and capped; uncertain cleanup retains lock.
+- Loader search path must include /opt/sys/lib and /opt/mm/lib for dependencies.
+- The prior ram2 test showed a working tile and clean exit, but a five-second AA
+  data gap caused an unexpected disconnect. Stability remains unresolved.
+- Managed mode and permanent plugin/installer are offline-tested candidates only.
+
+Current options2 candidate (2026-11-18; supersedes the above baseline notes):
+- Helper 10 pins the custom options2 daemon via the generated CRC/size header.
+- Explicit tile selection sends "open"; automatic "show" cannot grant ownership.
+- Connect automatically, Open Android Auto automatically and tile visibility are
+  independent. The app/menu entry releases projection to expose the controls.
+- Earlier managed tile1 visibility/selection and the separate English label
+  patch were confirmed on NBTEvo_X20511I. Options2 remains locally tested only.
+- Full source, naming scope and current test evidence: tools/tile/IMPLEMENTATION.md.

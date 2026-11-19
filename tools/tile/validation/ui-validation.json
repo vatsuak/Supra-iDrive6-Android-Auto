@@ -1,0 +1,21 @@
+{
+  "controlsEntryExplicit": true,
+  "favouriteUUIDPreserved": true,
+  "stateOrderPreserved": true,
+  "actionModelReferencesValid": true,
+  "settingsIndependent": true,
+  "languages": [
+    "de.txt",
+    "en-UK.txt",
+    "en-US.txt",
+    "es-ES.txt",
+    "es-US.txt",
+    "fr-FR.txt",
+    "fr-CA.txt",
+    "it.txt",
+    "pt.txt",
+    "ru.txt"
+  ],
+  "unrelatedTranslationsPreserved": true,
+  "changedLabelsUseEnglishFallback": true
+}

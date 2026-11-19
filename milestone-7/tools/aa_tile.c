@@ -38,16 +38,31 @@ typedef unsigned long long u64;
 #include <errno.h>
 #include <limits.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
-#define AA_TILE_VERSION "6-supra-v1991-ram1"
+#define AA_TILE_VERSION "10-supra-v1991-options2"
+#include "aa_tile_background_baseline.h"
 #ifndef AA_TILE_STATE_FILE
 #define AA_TILE_STATE_FILE "/dev/shmem/nbt-aad-state"
 #endif
 #ifndef AA_TILE_LOCK_FILE
 #define AA_TILE_LOCK_FILE "/dev/shmem/aa-tile.lock"
 #endif
+
+#ifndef AA_TILE_DAEMON_FILE
+#define AA_TILE_DAEMON_FILE "/opt/aa/nbt-aad"
+#endif
+#ifndef AA_TILE_LEASE_FILE
+#define AA_TILE_LEASE_FILE "/dev/shmem/aa-tile.lease"
+#endif
+#ifndef AA_TILE_ENABLE_FILE
+#define AA_TILE_ENABLE_FILE "/var/opt/aa/native-tile"
+#endif
+static int g_managed;
+static long g_ownerPid;
+static char g_lease[64];
 
 #define TILE_KEY   0x2471
 #define TILE_FB    0x24
@@ -104,7 +119,7 @@ static u32 r32(const u8* p) { return p[0] | (p[1] << 8) | (p[2] << 16) | ((u32)p
 static u16 r16(const u8* p) { return p[0] | (p[1] << 8); }
 
 static void hex(const char* tag, const u8* p, u32 n) {
-    u32 i; printf("%s len=%u:", tag, n);
+    u32 i; if (g_managed) return; printf("%s len=%u:", tag, n);
     for (i = 0; i < n && i < 64; ++i) printf(" %02x", p[i]);
     printf("\n"); fflush(0);
 }
@@ -120,7 +135,7 @@ static int sendRequest(u32 id, const Buf* v) {
     if (v && v->n) streamWrite(s, v->b, v->n);
     rc = streamSend(s, -1);
     streamDtor(s);
-    printf("[tx] request 0x%x -> rc=%d\n", id, rc); fflush(0);
+    if (!g_managed || rc != 0) { printf("[tx] request 0x%x -> rc=%d\n", id, rc); fflush(0); }
     return rc == 0 ? 0 : -1; /* Match v1.9.91 DsiClient: only zero is success. */
 }
 
@@ -141,7 +156,7 @@ static int sendMsg(u16 fkt, u8 op, const u8* data, u32 n) {
     p32(&v, g_client);                                   /* tag */
     p32(&v, n);
     for (i = 0; i < n; ++i) p8(&v, data[i]);
-    printf("[tx] FB 24.71 fkt 0x%03x op 0x%X -> 0x%04x\n", fkt, op, g_ctrl);
+    if (!g_managed) printf("[tx] FB 24.71 fkt 0x%03x op 0x%X -> 0x%04x\n", fkt, op, g_ctrl);
     hex("[tx] msg", v.b, v.n);
     return sendRequest(REQ_PROCESS_MESSAGE, &v);
 }
@@ -159,6 +174,7 @@ static int wanted(void) {
     b[n] = 0;
     if (sscanf(b, "%23s %ld", state, &pid) != 2 || strcmp(state, "connected") || pid <= 0 || pid > INT_MAX)
         return 0;
+    if (g_managed && pid != g_ownerPid) return 0;
     return kill((pid_t)pid, 0) == 0 || errno == EPERM;
 }
 
@@ -173,7 +189,7 @@ static void publish(int force) {
     printf("[tile] %s\n", w ? "SHOWN" : "hidden"); fflush(0);
 }
 
-/* "show" to nbt-aad's control port, like the iDrive Android Auto menu entry */
+/* Explicit local "open", distinct from automatic screen restoration. */
 static void sendShow(void) {
     struct sockaddr_in sa; int s, rc;
     memset(&sa, 0, sizeof(sa));
@@ -185,10 +201,10 @@ static void sendShow(void) {
     sa.sin_addr.s_addr = htonl(0x7f000001UL);
     s = socket(AF_INET, SOCK_DGRAM, 0);
     if (s < 0) { ++g_errors; printf("[show] socket failed\n"); fflush(0); return; }
-    rc = sendto(s, "show", 4, 0, (const struct sockaddr*)&sa, sizeof(sa));
+    rc = sendto(s, "open", 4, 0, (const struct sockaddr*)&sa, sizeof(sa));
     close(s);
     if (rc != 4) ++g_errors;
-    printf("[show] 'show' to nbt-aad (127.0.0.1:52790) -> %d\n", rc); fflush(0);
+    printf("[show] 'open' to nbt-aad (127.0.0.1:52790) -> %d\n", rc); fflush(0);
 }
 
 /* periodic work, always from the callback thread */
@@ -238,13 +254,13 @@ static void onMessage(const u8* pl, u32 len) {
     if (n > len - 32) return;          /* never read past the buffer */
     if (n > 64) n = 64;                /* defensive cap on the data we log/use */
     if (fb != TILE_FB || inst != TILE_INST || dst != g_dev || op != OP_SET) return;
-    printf("[rx] FB 24.71 fkt 0x%03x Set from 0x%04x\n", fkt, r16(pl + 14));
+    if (!g_managed) printf("[rx] FB 24.71 fkt 0x%03x Set from 0x%04x\n", fkt, r16(pl + 14));
     hex("[rx] data", d, n);
     if (fkt == FKT_NOTIF && n == 5 && d[0] == 1) {
         u16 f = (d[3] << 8) | d[4];
         g_ctrl = (d[1] << 8) | d[2];
         g_subscribed++;
-        printf("[rx] iDrive (0x%04x) subscribed to function 0x%03x\n", g_ctrl, f); fflush(0);
+        if (!g_managed) printf("[rx] iDrive (0x%04x) subscribed to function 0x%03x\n", g_ctrl, f); fflush(0);
         if (f == FKT_STATE) publish(1);
         else { u8 e[4]; e[0] = 0x20; e[1] = 0x10; e[2] = d[3]; e[3] = d[4]; if (sendMsg(FKT_NOTIF, OP_ERROR, e, 4) < 0) ++g_errors; }
         return;
@@ -295,18 +311,88 @@ static void onFatal(int sig) {
     _exit(9);
 }
 
+static int g_instanceFd = -1;
+static pid_t g_instanceOwner;
+static int g_preserveLock;
+static void releaseInstance(void) {
+    struct stat opened, named;
+    if (g_instanceFd < 0 || g_instanceOwner != getpid()) return;
+    if (!g_preserveLock && !fstat(g_instanceFd, &opened) && !lstat(AA_TILE_LOCK_FILE, &named) &&
+        opened.st_dev == named.st_dev && opened.st_ino == named.st_ino)
+        unlink(AA_TILE_LOCK_FILE);
+    close(g_instanceFd);
+    g_instanceFd = -1;
+}
 static int lockInstance(void) {
-    struct flock lock;
-    int fd = open(AA_TILE_LOCK_FILE, O_RDWR | O_CREAT, 0600);
-    if (fd < 0) return -1;
-    memset(&lock, 0, sizeof(lock));
-    lock.l_type = F_WRLCK; lock.l_whence = SEEK_SET;
-    if (fcntl(fd, F_SETLK, &lock) < 0) { close(fd); return -1; }
-    return fd; /* Keep open until process exit; the kernel releases the lock. */
+    char owner[32]; int length;
+    /* NBTevo /dev/shmem has no advisory record locks. O_EXCL claims a flat
+       RAM object atomically. A crash leaves a fail-closed marker: only remove
+       it after confirming its recorded PID is gone, or reboot the unit. */
+    int fd = open(AA_TILE_LOCK_FILE, O_RDWR | O_CREAT | O_EXCL, 0600);
+    if (fd < 0) { perror("aa-tile exclusive RAM lock"); return -1; }
+    length = snprintf(owner, sizeof(owner), "%ld\n", (long)getpid());
+    if (write(fd, owner, length) != length) {
+        int saved = errno; close(fd); unlink(AA_TILE_LOCK_FILE); errno = saved; return -1;
+    }
+    g_instanceFd = fd; g_instanceOwner = getpid();
+    if (atexit(releaseInstance)) { releaseInstance(); return -1; }
+    return fd;
+}
+
+/* POSIX cksum, supplied here because the production head unit lacks the utility. */
+static u32 crcByte(u32 crc, u8 byte) {
+    int bit; crc ^= (u32)byte << 24;
+    for (bit = 0; bit < 8; ++bit) crc = crc & 0x80000000u ? (crc << 1) ^ 0x04c11db7u : crc << 1;
+    return crc;
+}
+static int fileChecksum(const char* path, u32* sum, unsigned long* size) {
+    u8 data[8192]; ssize_t n; u32 crc = 0; unsigned long length = 0, rest; int fd = open(path, O_RDONLY);
+    if (fd < 0) return 0;
+    while ((n = read(fd, data, sizeof(data))) > 0) {
+        ssize_t i; length += n;
+        for (i = 0; i < n; ++i) crc = crcByte(crc, data[i]);
+    }
+    close(fd); if (n < 0) return 0;
+    for (rest = length; rest; rest >>= 8) crc = crcByte(crc, rest & 255);
+    *sum = ~crc; *size = length; return 1;
+}
+static int baselineVerified(void) {
+    u32 sum; unsigned long size;
+    return fileChecksum(AA_TILE_DAEMON_FILE, &sum, &size) &&
+           sum == AA_TILE_BACKGROUND_CRC && size == AA_TILE_BACKGROUND_SIZE;
+}
+
+/* A managed instance is leased by the RHMI app. Loss of the lease/setting,
+   daemon death or daemon PID replacement ends it; idle only hides the tile. */
+static int managedAlive(void) {
+    char token[64], state[24]; long pid = 0, appPid = 0; FILE* f;
+    if (!g_managed) return 1;
+    if (access(AA_TILE_ENABLE_FILE, F_OK) != 0) return 0;
+    f = fopen(AA_TILE_LEASE_FILE, "r");
+    if (!f) return 0;
+    token[0] = 0; (void)fscanf(f, "%63s", token); fclose(f);
+    if (strcmp(token, g_lease)) return 0;
+    if (sscanf(token, "%ld:", &appPid) != 1 || appPid <= 0 || appPid > INT_MAX) return 0;
+    if (kill((pid_t)appPid, 0) != 0 && errno != EPERM) return 0;
+    if (kill((pid_t)g_ownerPid, 0) != 0 && errno != EPERM) return 0;
+    f = fopen(AA_TILE_STATE_FILE, "r");
+    if (!f) return 0;
+    if (fscanf(f, "%23s %ld", state, &pid) != 2) pid = 0;
+    fclose(f);
+    return pid == g_ownerPid;
 }
 
 static int parseArgs(int argc, char** argv, int* secs) {
     char* end; unsigned long duration;
+    g_managed = 0; g_ownerPid = 0; g_lease[0] = 0;
+    if (argc == 4 && !strcmp(argv[1], "managed")) {
+        size_t n = strlen(argv[3]);
+        errno = 0; g_ownerPid = strtol(argv[2], &end, 10);
+        if (errno || !argv[2][0] || *end || g_ownerPid <= 0 || g_ownerPid > INT_MAX ||
+            !n || n >= sizeof(g_lease) || strspn(argv[3], "0123456789-:") != n) return 0;
+        strcpy(g_lease, argv[3]); g_managed = 1; g_always = 0; *secs = 0;
+        return 1;
+    }
     if (argc > 3) return 0;
     if (argc > 1 && strcmp(argv[1], "follow") && strcmp(argv[1], "always")) return 0;
     *secs = 120;
@@ -324,9 +410,12 @@ int main(int argc, char** argv) {
     void* lib = 0; void** vt; pthread_t t; int i, secs, ticks, instanceFd;
     static const char* names[] = { "/opt/sys/lib/libsys_dsi_colibry.cpp-ne.so.8",
         "/fs/sda0/opt/sys/lib/libsys_dsi_colibry.cpp-ne.so.8", "libsys_dsi_colibry.cpp-ne.so.8", 0 };
+    if (argc == 2 && !strcmp(argv[1], "verify-baseline")) return baselineVerified() ? 0 : 7;
     if (!parseArgs(argc, argv, &secs)) {
-        fprintf(stderr, "Usage: aa-tile [follow|always] [seconds: 0..86400, default 120]\n"); return 1;
+        fprintf(stderr, "Usage: aa-tile [follow|always] [seconds: 0..86400, default 120] | managed <daemon-pid> <lease>\n"); return 1;
     }
+    if (!baselineVerified()) { fprintf(stderr, "Matching connection-options daemon required\n"); return 7; }
+    if (!managedAlive()) { fprintf(stderr, "Managed tile lease/daemon is unavailable\n"); return 6; }
     instanceFd = lockInstance();
     if (instanceFd < 0) { fprintf(stderr, "aa-tile already running or RAM lock unavailable\n"); return 6; }
     printf("nbt-aa-tile " AA_TILE_VERSION " (mode %s, %s) - v1.9.91 RAM test; head-unit validation pending\n",
@@ -363,7 +452,15 @@ int main(int argc, char** argv) {
     if (pthread_create(&t, 0, thr, 0) != 0) { printf("[dsi] thread FAILED\n"); return 1; }
     for (ticks = 0; !g_stop; ++ticks) {          /* one round every 250 ms */
         usleep(250000);
+        if (!managedAlive()) g_stop = 1;
+        if (g_managed && ticks % 40 == 0) {
+            struct stat logstat;
+            if (!fstat(STDOUT_FILENO, &logstat) && S_ISREG(logstat.st_mode) && logstat.st_size > 262144) {
+                (void)freopen("/dev/null", "w", stdout);
+            }
+        }
         if (secs && ticks >= secs * 4) g_stop = 1;
+        if (!secs && ticks >= 2400) ticks = 0; /* bounded counter for indefinite managed use */
         if (ticks % 40 == 0)
             printf("[state] callbacks=%d subscriptions=%d presses=%d shown=%d iDrive=0x%04x\n",
                    g_callbacks, g_subscribed, g_presses, g_shown, g_ctrl), fflush(0);
@@ -373,6 +470,10 @@ int main(int argc, char** argv) {
     printf("RESULT: attached=%d registered=%d device=%d subscriptions=%d presses=%d callbacks=%d clean=%d errors=%d\n",
            g_attached, g_regDone, g_devDone, g_subscribed, g_presses, g_callbacks, g_done, g_errors);
     fflush(0);
+    if (g_managed && (!g_regDone || !g_done || g_errors)) {
+        g_preserveLock = 1;
+        fprintf(stderr, "Managed cleanup incomplete; RAM lock retained. Reboot before retrying.\n");
+    }
     if (!g_regDone) exit(4);
     if (!g_done || g_errors) exit(5);
     exit(g_subscribed ? 0 : 2);

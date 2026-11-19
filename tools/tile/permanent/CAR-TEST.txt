@@ -1,0 +1,29 @@
+Later parked-car acceptance tests — record results rather than assuming a pass
+
+1. Confirm exact installed v1.9.91 and original plugin; preserve baseline logs.
+   Keep USB logs available; logs may contain phone identifiers, Wi-Fi credentials
+   and vehicle location. Redact those before sharing outside this project.
+2. With the helper OFF, keep AA connected for 15 minutes, including music/nav use.
+   Record every dropout and reconnection. Repeat matched conditions with the tile ON.
+   Inspect five-second no-data timeouts; do not attribute them from timing alone.
+3. Verify tile Main Menu/Media presence and selection, MENU/BACK/knob/volume,
+   camera/PDC handoff, and absence of unwanted screen changes.
+4. Disconnect/reconnect Android three times. Tile must hide/show without spawning
+   more than one helper. Stop/Restart AA twice. Check helper exit and replacement.
+5. Uncheck the tile during AA. It must disappear while AA remains connected.
+   Re-enable it and check reappearance. After a helper failure, confirm it does
+   not relaunch repeatedly; inspect the log/lock before retrying.
+6. Stop AA. Connect the iPhone with factory CarPlay. Verify normal CarPlay entry,
+   audio and controls. Disconnect iPhone, start AA and reconnect Android. Repeat
+   in the reverse order. Test simultaneous phone availability separately; this
+   tile does not arbitrate which projection connection owns the screen.
+7. Reboot with AA automatic start OFF and the tile setting OFF, then ON. Confirm
+   the saved setting is accurate and AA still starts manually. Verify rollback
+   restores the exact original plugin and retains existing AA settings.
+8. Only after the above pass, test the existing Start automatically setting ON:
+   Android first, iPhone first, no phone, and subsequent phone reconnects. Confirm
+   AA bootloop protection remains effective and no helper remains after AA stops.
+
+Release gate: longer paired comparisons without unexplained regression, native UI
+and launch compatibility, clean stop/restart/disable, CarPlay/camera behavior,
+verified rollback and reboot tests. Until then this stays an experimental candidate.

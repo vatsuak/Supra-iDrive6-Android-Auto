@@ -6,12 +6,14 @@
       <properties/>
     </entryButton>
     <actions>
-      <hmiAction id="5" target="10"/>
+      <raAction id="5"/>
       <raAction id="2"/>
       <raAction id="21"/>
       <raAction id="22"/>
       <raAction id="23"/>
       <raAction id="24"/>
+      <raAction id="181"/>
+      <raAction id="185"/>
       <raAction id="26"/>
       <raAction id="27"/>
       <raAction id="28"/>
@@ -50,6 +52,10 @@
         <synonyms/>
       </textIdModel>
       <raBoolModel id="34"/>
+      <raBoolModel id="182"/>
+      <raBoolModel id="186"/>
+      <textIdModel id="187" textId="50"><synonyms/></textIdModel>
+      <textIdModel id="183" textId="49"><synonyms/></textIdModel>
       <textIdModel id="35" textId="15">
         <synonyms/>
       </textIdModel>
@@ -180,7 +186,7 @@
     <hmiStates>
       <hmiState id="10" text="Android Auto" textModel="3">
         <components>
-          <button action="21" id="61" model="31" text="Start Android Auto"/>
+          <button action="21" id="61" model="31" text="Connect Android Auto"/>
           <button action="22" id="62" model="32" text="Force Stop"/>
           <button action="23" id="63" model="33" text="Restart"/>
           <separator id="66"/>
@@ -241,7 +247,9 @@
           <property id="24" value="3"/>
         </properties>
         <components>
-          <checkbox action="24" id="64" model="34" text="Start automatically" textModel="35"/>
+          <checkbox action="181" id="184" model="182" text="Show Android Auto tile" textModel="183"/>
+          <checkbox action="24" id="64" model="34" text="Connect automatically" textModel="35"/>
+          <checkbox action="185" id="188" model="186" text="Open Android Auto automatically" textModel="187"/>
           <checkbox action="26" id="67" model="38" text="Save logs to USB" textModel="39"/>
           <checkbox action="27" id="68" model="42" text="MENU key opens iDrive" textModel="43"/>
           <checkbox action="28" id="69" model="44" text="Show driving mode changes" textModel="45"/>

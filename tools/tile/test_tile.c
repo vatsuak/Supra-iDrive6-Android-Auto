@@ -8,12 +8,15 @@
 #include <string.h>
 static char test_state_path[128];
 static char test_lock_path[128];
+static char test_lease_path[128], test_enable_path[128];
 static int shows;
 static ssize_t show_result = 4;
 static ssize_t fake_sendto(int fd, const void* data, size_t length, int flags,
                           const struct sockaddr* address, socklen_t address_length);
 #define AA_TILE_STATE_FILE test_state_path
 #define AA_TILE_LOCK_FILE test_lock_path
+#define AA_TILE_LEASE_FILE test_lease_path
+#define AA_TILE_ENABLE_FILE test_enable_path
 #define sendto fake_sendto
 #define main tile_program_main
 #include "../../milestone-7/tools/aa_tile.c"
@@ -29,7 +32,7 @@ static ssize_t fake_sendto(int fd, const void* data, size_t length, int flags,
                           const struct sockaddr* address, socklen_t address_length) {
     const struct sockaddr_in* sa = (const struct sockaddr_in*)address;
     (void)fd; (void)flags;
-    assert(length == 4 && !memcmp(data, "show", 4));
+    assert(length == 4 && !memcmp(data, "open", 4));
     assert(address_length == sizeof(*sa));
     assert(sa->sin_family == AF_INET && ntohs(sa->sin_port) == 52790);
     assert(ntohl(sa->sin_addr.s_addr) == 0x7f000001UL);
@@ -140,15 +143,56 @@ static void test_args_and_lock(void) {
     bad[1] = "other"; assert(!parseArgs(3, bad, &secs));
     fd = lockInstance(); assert(fd >= 0);
     child = fork(); assert(child >= 0);
-    if (!child) { int other = lockInstance(); _exit(other >= 0 ? 1 : 0); }
+    if (!child) {
+        int other = lockInstance();
+        releaseInstance(); /* A forked child must not remove its parent's lock. */
+        assert(!access(test_lock_path, F_OK));
+        exit(other >= 0 ? 1 : 0);
+    }
     assert(waitpid(child, &result, 0) == child && WIFEXITED(result) && !WEXITSTATUS(result));
-    close(fd);
-    fd = lockInstance(); assert(fd >= 0); close(fd);
+    releaseInstance(); assert(access(test_lock_path, F_OK) < 0);
+    fd = lockInstance(); assert(fd >= 0); releaseInstance();
+    child = fork(); assert(child >= 0);
+    if (!child) { assert(lockInstance() >= 0); _exit(0); }
+    assert(waitpid(child, &result, 0) == child && WIFEXITED(result) && !WEXITSTATUS(result));
+    assert(lockInstance() < 0); /* A crash marker requires explicit recovery. */
+    unlink(test_lock_path);
+    fd = lockInstance(); assert(fd >= 0); releaseInstance();
+}
+static void test_managed(void) {
+    int secs; char pid[24], token[64]; FILE* f;
+    snprintf(pid, sizeof(pid), "%ld", (long)getpid());
+    snprintf(token, sizeof(token), "%ld:%ld:1", (long)getpid(), (long)getpid());
+    char* args[] = {"aa-tile", "managed", pid, token};
+    assert(parseArgs(4, args, &secs) && !secs && g_managed);
+    assert(!managedAlive());
+    f = fopen(test_enable_path, "w"); assert(f); fclose(f);
+    f = fopen(test_lease_path, "w"); assert(f); fputs(token, f); fclose(f);
+    state("connected", getpid()); assert(managedAlive() && wanted());
+    state("idle", getpid()); assert(managedAlive() && !wanted());
+    state("connected", getppid()); assert(!managedAlive() && !wanted());
+    state("connected", getpid());
+    f = fopen(test_lease_path, "w"); assert(f); fputs("1:2:3", f); fclose(f);
+    assert(!managedAlive());
+    f = fopen(test_lease_path, "w"); assert(f); fputs(token, f); fclose(f);
+    unlink(test_enable_path); assert(!managedAlive());
+    args[2] = "0"; assert(!parseArgs(4, args, &secs));
+    args[2] = pid; args[3] = "bad/token"; assert(!parseArgs(4, args, &secs));
+    g_managed = 0; unlink(test_lease_path);
+}
+static void test_crc(void) {
+    u32 sum; unsigned long size; FILE* f = fopen(test_state_path, "w");
+    assert(f); fputs("abc", f); fclose(f);
+    assert(fileChecksum(test_state_path, &sum, &size) && sum == 1219131554u && size == 3);
+    f = fopen(test_state_path, "w"); assert(f); fclose(f);
+    assert(fileChecksum(test_state_path, &sum, &size) && sum == 4294967295u && size == 0);
 }
 int main(void) {
     snprintf(test_state_path, sizeof(test_state_path), "/tmp/aa-tile-state-%ld", (long)getpid());
     snprintf(test_lock_path, sizeof(test_lock_path), "/tmp/aa-tile-lock-%ld", (long)getpid());
-    test_state(); test_protocol(); test_cleanup(); test_nonzero_sends(); test_args_and_lock();
+    snprintf(test_lease_path, sizeof(test_lease_path), "/tmp/aa-tile-lease-%ld", (long)getpid());
+    snprintf(test_enable_path, sizeof(test_enable_path), "/tmp/aa-tile-enable-%ld", (long)getpid());
+    test_state(); test_protocol(); test_cleanup(); test_nonzero_sends(); test_args_and_lock(); test_managed(); test_crc();
     unlink(test_state_path); unlink(test_lock_path);
     puts("PASS: live-state gates, MOST packets/presses, nonzero DSI/UDP send failures, cleanup, args and instance lock");
     return 0;

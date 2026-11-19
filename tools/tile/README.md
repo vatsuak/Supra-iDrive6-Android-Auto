@@ -1,3 +1,9 @@
+> **Current implementation:** see [IMPLEMENTATION.md](IMPLEMENTATION.md) for the
+> managed tile, Android Auto naming, independent options and controls-menu fix.
+> The following is historical documentation for the original standalone RAM test.
+> Its official-daemon instructions do not describe the current options2 helper,
+> which accepts only its matching custom daemon.
+
 # Native Android Auto tile: v1.9.91 RAM test
 
 This optional helper implements the CarLife main-menu tile and Media entry from
