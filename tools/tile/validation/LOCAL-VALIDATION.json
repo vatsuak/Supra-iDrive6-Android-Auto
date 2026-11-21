@@ -1,0 +1,23 @@
+{
+  "candidate": "v1.9.91-sppreq3-options2",
+  "scope": "local-only",
+  "hardwareTested": false,
+  "uploadedToWindows": false,
+  "deployed": false,
+  "authorizedWorkflows": [],
+  "accessedWorkflows": [],
+  "subagents": [],
+  "qnxArmBuild": "passed; four existing signed/unsigned warnings",
+  "controlsPolicySanitizers": "passed: acknowledgment, stale hidden status, overlay release, lost requests, timeout, late reply, stopped daemon, cancellation, clock wrap, explicit reopening",
+  "independentOptionsSanitizers": "passed: four combinations and existing screen policy regressions",
+  "helperProtocolSanitizers": "passed",
+  "helperBinaryGuard": "accepts options2; rejects official daemon and options1",
+  "installerRollbackTests": 14,
+  "uiValidation": "passed: controls action 5, independent options, state order, favourite UUID, all ten language resources",
+  "elfValidation": "passed: ARM ELF types, options2 markers, unchanged shared-library dependencies",
+  "remaining": [
+    "Verify real HMI action delivery and focus timing on NBTEvo_X20511I",
+    "Exercise controls access while AA connected/visible/hidden",
+    "Check Settings, Force Stop, native tile, favourite, camera/PDC, factory CarPlay and reconnect behavior"
+  ]
+}

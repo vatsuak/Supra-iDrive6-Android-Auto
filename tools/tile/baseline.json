@@ -1,0 +1,18 @@
+{
+  "release_id": 447979083,
+  "release_name": "v1.9.91 - Settings auto-restart, steadier Bluetooth hand-off",
+  "release_url": "https://github.com/Sq00ky/Supra-iDrive6-Android-Auto/releases/tag/v1.9.91-sppreq3",
+  "published_at": "2026-11-17T02:17:18Z",
+  "daemon_build_marker": "v1.9.91-sppreq3",
+  "daemon_sha256": "d26c18bf5ad9327261483705011e3b1ed6a88120760b2f98192cc30cdc6cf038",
+  "daemon_posix_cksum": 1810084051,
+  "daemon_bytes": 1021153,
+  "source_snapshot": "441b389c422092028aa13af6a68abad973aefa2b",
+  "source_snapshot_build_marker": "v1.9.91-sppreq3",
+  "source_note": "Pinned official release tag and daemon build marker agree; manifest/XML/image/text source resources match the official Releases.zip byte for byte. The official daemon/plugin binaries are kept unchanged. This branch builds only the separate tile helper; an exact daemon rebuild is not claimed.",
+  "unmodified_source_sha256": {
+    "milestone-7/src/main.cpp": "f6720eaa50e5597bed06ac91c79c495bab17fa58047ef452d54ed4be763a06fd",
+    "milestone-7/rhmiapp/nbt_aad_app.cpp": "446bb82780ca0232fd77408f710818dbaf27d77905a5703415ebe7fafc215364"
+  },
+  "hardware_tested": false
+}

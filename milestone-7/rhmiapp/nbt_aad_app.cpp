@@ -6,7 +6,7 @@
 // only gate is CSpecialAppsHelper = coding A4A / A4A_REMOTE_APPS / REMOTE_HMI / TOUCH_COMMAND). The manifest names
 // this library, the UI description (NbtAad.xml) and the text/image DBs. The XML declares one entry button; its
 // placement comes from the XML (applicationType="Custom" + insertStateID/insertAfterFocusID, like ActiveSeating),
-// so iDrive itself creates and places the menu row. Pressing it opens our own menu (hmiState 10, pure XML hmiAction):
+// so iDrive itself creates and places the menu row. Pressing it opens our own menu (hmiState 10, controls-entry handshake):
 //   Start Android Auto  (raAction 21) - launches nbt-aad, or brings a running one to the front ("show");
 //                                       the row reads "Connecting..." / "Open Android Auto" with the daemon state
 //   Force Stop          (raAction 22) - "quit", then SIGTERM after 3 s, SIGKILL after 10 s
@@ -66,6 +66,10 @@
 #include "boot_guard.hpp"
 #include "overlay_watch.hpp"
 #include "entry_key.hpp"
+#include "controls_entry.hpp"
+#include "tile_policy.hpp"
+#include "../src/connection_options.hpp"
+#include "../src/ui_state.hpp"
 #include "settings_watch.hpp"   // restart after a Settings change (rhmiapp-68)
 #include "../src/favourite_colour.hpp"
 #include "../src/status_hint.hpp"
@@ -76,7 +80,7 @@
 #include <string>
 #endif
 
-#define NBT_AAD_APP_VERSION "rhmiapp-93 (" __DATE__ " " __TIME__ ")"
+#define NBT_AAD_APP_VERSION "rhmiapp-93-options3 (" __DATE__ " " __TIME__ ")"
 
 extern char** environ;
 
@@ -311,7 +315,7 @@ const unsigned    kPropWaiting     = 8;       // LABEL_WAITINGANIMATION
 // also counts). The same goes for every checkbox flag below: each constant is the file's name in both dirs.
 const unsigned    kActAutostart    = 24;
 const unsigned    kAutostartModel  = 34;
-const char* const kAutostartFlag   = "autostart";
+const char* const kAutostartFlag   = nbt::kAutoConnectFlag;
 const long        kAutostartDelayS = 15;
 // About page (hmiState 12): a non-selectable <list> on a Richtext raListModel holding a 1x1 table whose cell is
 // TextID 17. The HMI wraps that text to the screen width and honours "\n" in the text DB. Same pattern as BMW's
@@ -573,6 +577,8 @@ bool fileExists(const char* p) {
 }
 
 // ---- launching the daemon (same as plugin/nbt_aad_plugin.cpp) ---------------------------------------------------
+void revokeTileLease();
+bool nativeTileOn();
 time_t g_lastLaunch = 0;
 
 pid_t launchDaemon() {
@@ -750,8 +756,8 @@ bool onPdcChanged(void* /*app*/, const bmw::BasicString<unsigned short>& value) 
     return true;
 }
 
-// Every "show" goes through here: the daemon takes it as the driver choosing Android Auto, over park assist too.
-void sendShow() {
+// Explicit Open grants screen ownership; automatic show only restores an already granted session.
+void sendShow(bool explicitSelection = false) {
     if (cameraOwnsScreen()) {
         g_cameraDismissed = true;
         alog("camera: Android Auto chosen over iDrive's camera view (context %d): kept until that view closes", g_cameraCtx);
@@ -760,7 +766,7 @@ void sendShow() {
         g_pdcDismissed = true;
         alog("park assist on: Android Auto chosen over it, so iDrive screens make it step aside again until park assist ends");
     }
-    sendToDaemon("show");
+    sendToDaemon(explicitSelection ? "open" : "show");
 }
 
 int g_lastDayNight = -1000;
@@ -976,6 +982,7 @@ unsigned g_shownText = kTextDefault;
 unsigned g_shownRow = kTextStart;
 
 struct DaemonState {
+    unsigned controlsAck; // sixth field: echoed controls request token (options3+)
     char state[24];     // idle | connecting | connected
     int pid;            // > 0 and alive, else 0
     int overlay;        // 1 = Android Auto on screen, knob goes to the phone; 2 = same, BACK held (v1.8.26+);
@@ -1026,18 +1033,20 @@ DaemonState readDaemonState() {
     strcpy(d.state, "idle");
     d.pid = 0;
     d.overlay = 0;
+    d.controlsAck = 0;
     d.favouritePeek = false;
     FILE* f = fopen(kStateFile, "r");
     if (f) {
-        char st[24] = "";
-        int pid = 0, ov = 0, favourite = 0;
-        int n = fscanf(f, "%23s %d %d %d", st, &pid, &ov, &favourite);
+        char record[128] = {0};
+        nbt::UiState parsed;
+        bool valid = fgets(record, sizeof(record), f) && nbt::parseUiState(record, parsed);
         fclose(f);
-        if (n >= 2 && pidAlive(pid)) {
-            strcpy(d.state, st);
-            d.pid = pid;
-            d.overlay = (n >= 3) ? ov : 0;
-            d.favouritePeek = n >= 4 && favourite == 1;
+        if (valid && pidAlive(parsed.pid)) {
+            strcpy(d.state, parsed.state);
+            d.pid = parsed.pid;
+            d.overlay = parsed.overlay;
+            d.favouritePeek = parsed.favouritePeek;
+            d.controlsAck = parsed.controlsAck;
             return d;
         }
     }
@@ -1059,7 +1068,6 @@ bool g_colourFocused = false;
 // connected-after-Start return to the main menu tests (a driver reading Settings must not be pulled out of it).
 bool inOurMenu() { return g_menuFocused || g_settingsFocused || g_colourFocused; }
 bool g_wantHome = false;       // Start was pressed: return to the main menu once the phone is connected
-bool g_entryStart = false;     // the Open Android Auto entry started nbt-aad: show it on connect if our menu is on top
 pid_t g_autostartPid = 0;     // automatic launch waiting for its first projection handoff
 unsigned g_autostartMenuTries = 0;
 time_t g_startTime = 0;
@@ -1115,6 +1123,7 @@ int  g_holdTries = 0;          // fired without iDrive showing the state yet (it
 bool g_aaSeen = false;         // state 13 was shown since we last fired event 52
 bool g_holdGaveUp = false;
 bool g_popupAside = false;     // stepped aside for an iDrive context (warning/camera/...): stays aside, no re-hold
+nbt::ControlsEntry g_controlsEntry;
 nbt::OverlayWatch g_ow;        // "Show iDrive warnings": hmi.graphicalContext -> step aside / come back (overlay_watch.hpp)
 bool driverInputNow(const DaemonState& d);
 bool knobInputNow(const DaemonState& d);
@@ -1274,7 +1283,7 @@ bool onAaFocus(void*, const bmw::Parcel& p) {
     if (f) g_ow.onOwnState(nbt::OverlayWatch::kAaState, nowMs());
     // MENU went to Android Auto (daemon overlay 3) but iDrive also left for its main menu: come straight back, so the
     // knob does not drive iDrive's main menu under the picture until the next poll.
-    if (!f && g_runApp && holdEnabled() && g_holding && !callActive()) {
+    if (!g_controlsEntry.pending() && !f && g_runApp && holdEnabled() && g_holding && !callActive()) {
         DaemonState d = readDaemonState();
         if (d.pid > 0 && d.overlay == 3 && !d.favouritePeek) fireHold(g_runApp, "a hard key went to Android Auto (immediate)");
     }
@@ -1290,7 +1299,7 @@ bool onAaVisible(void*, const bmw::Parcel& p) {
     // iDrive came back to our blank state by itself while Android Auto is minimized (BACK in iDrive walks its history
     // back to the Android Auto screen; car 2026-10-29: blank screen for 3 s). That is the driver going back to Android
     // Auto, as with CarPlay: bring it to the front. Not in reverse / park assist / a call.
-    if (v && !g_holding && holdEnabled() && !callActive() && g_lastGear != kReverseGear && !pdcOwnsScreen()) {
+    if (!g_controlsEntry.pending() && v && !g_holding && holdEnabled() && !callActive() && g_lastGear != kReverseGear && !pdcOwnsScreen()) {
         DaemonState d = readDaemonState();
         if (d.pid > 0 && !d.overlay && !d.favouritePeek && !strcmp(d.state, "connected")) {
             alog("hold: iDrive went back to the Android Auto screen: asking nbt-aad to come to the front");
@@ -1303,6 +1312,7 @@ bool onAaVisible(void*, const bmw::Parcel& p) {
 }
 
 void fireHold(bmw::PluginApp* app, const char* why) {
+    if (g_controlsEntry.pending()) return;
     if (g_holdTries >= 8) { alog("hold: not entering state %u (%s): already tried %d times", kAaState, why, g_holdTries); return; }
     ++g_holdTries;
     g_aaSeen = false;
@@ -1571,15 +1581,20 @@ void serviceHold(bmw::PluginApp* app, const DaemonState& d) {
 }
 
 void startDaemonOrShow() {
+    g_controlsEntry.cancel(); // a later explicit Open supersedes a pending menu visit
     g_autostartPid = 0;                               // the driver is taking over the automatic handoff
     g_popupAside = false;                            // the driver asked for Android Auto: clear a warning step-aside
     g_ow.reset(nowMs());
     DaemonState d = readDaemonState();
     g_wantHome = true;
     g_startTime = time(NULL);
+    if (nbt::connectionAction(d.pid != 0, !strcmp(d.state, "connected")) == nbt::WAIT_FOR_CONNECTION) {
+        alog("connect: daemon is waiting for a phone; screen policy unchanged");
+        return;
+    }
     if (d.pid != 0) {
         alog("start: nbt-aad already running (pid %d, %s): asking it to come to the front", d.pid, d.state);
-        sendShow();
+        sendShow(true);
         if (!strcmp(d.state, "connected") && holdEnabled()) {
             g_wantHome = false;                          // serviceHold() puts iDrive on state 13 once the overlay is up
             g_prevOverlay = 0;                           // treat the coming overlay as new (also when it never went down)
@@ -1594,6 +1609,7 @@ void startDaemonOrShow() {
 }
 
 void beginStop(bool restart) {
+    revokeTileLease();
     g_autostartPid = 0;
     DaemonState d = readDaemonState();
     g_restartAfterStop = restart;
@@ -1606,7 +1622,6 @@ void beginStop(bool restart) {
     g_stopTime = time(NULL);
     g_stopStage = 0;
     g_wantHome = false;
-    g_entryStart = false;
     sendToDaemon("quit");
     alog("%s: sent 'quit' to nbt-aad pid %d", restart ? "restart" : "force stop", d.pid);
 }
@@ -1894,7 +1909,20 @@ bool onAutostartToggle(void* /*app*/, const bmw::Parcel& /*args*/) {
     flipFlag(kAutostartFlag, "start with the car", true);
     bool now = autostartOn();
     alog("menu: start with the car %s -> %s", on ? "on" : "off", now ? "on" : "off");
+    if (!on && now) g_autostartDone = false; // a deliberate enable may start an idle listener
     if (g_runApp) showAutostart(g_runApp);
+    return true;
+}
+
+// Screen preference is read at the next connection, with no active-session restart.
+const unsigned kActAutoOpen = 185, kAutoOpenModel = 186;
+bool g_autoOpenShown = false;
+void showAutoOpen(bmw::PluginApp* app) {
+    app->updateModel(kAutoOpenModel, nbt::flagSet(nbt::kAutoOpenFlag)); g_autoOpenShown = true;
+}
+bool onAutoOpenToggle(void*, const bmw::Parcel&) {
+    flipFlag(nbt::kAutoOpenFlag, "open Android Auto automatically", true);
+    if (g_runApp) showAutoOpen(g_runApp);
     return true;
 }
 
@@ -2354,6 +2382,80 @@ bool serviceAutostartHandoff(bmw::PluginApp* app, const DaemonState& d, bool con
     return false;
 }
 
+// Optional tile: traditional /opt/aa installation only. No daemon modifications.
+const unsigned kActNativeTile = 181, kNativeTileModel = 182;
+const char* const kTileFlag = "/var/opt/aa/native-tile";
+const char* const kTileLease = "/dev/shmem/aa-tile.lease";
+const char* const kTileLock = "/dev/shmem/aa-tile.lock";
+nbt::TilePolicy g_tilePolicy;
+unsigned g_tileLaunchNumber = 0;
+bool g_tileShown = false;
+
+bool nativeTileOn() { return !nbt::packaged() && fileExists(kTileFlag); }
+void revokeTileLease() { unlink(kTileLease); }
+void showNativeTile(bmw::PluginApp* app) {
+    app->updateModel(kNativeTileModel, nativeTileOn()); g_tileShown = true;
+}
+bool onNativeTileToggle(void*, const bmw::Parcel&) {
+    if (nbt::packaged()) { alog("native tile: this add-on supports /opt/aa installs only"); return true; }
+    if (nativeTileOn()) {
+        if (unlink(kTileFlag) != 0) { alog("native tile: cannot disable (%d)", errno); return true; }
+        revokeTileLease();
+        g_tilePolicy.launch(false, 0, false, false);
+    } else {
+        nbt::makeDataDir();
+        int fd = open(kTileFlag, O_WRONLY | O_CREAT | O_EXCL, 0600);
+        if (fd < 0) { alog("native tile: cannot enable (%d)", errno); return true; }
+        close(fd);
+    }
+    alog("native tile: %s", nativeTileOn() ? "enabled" : "disabled");
+    if (g_runApp) showNativeTile(g_runApp);
+    return true;
+}
+
+void serviceNativeTile(const DaemonState& d) {
+    const bool enabled = nativeTileOn() && !g_stopPid;
+    if (!enabled || d.pid <= 0) revokeTileLease();
+    // The setting is intentionally excluded from kSettingsFlags: changing it
+    // only manages this helper and never restarts a healthy AA session.
+    if (!g_tilePolicy.launch(enabled, d.pid, !strcmp(d.state, "connected"), fileExists(kTileLock))) return;
+    if (access("/opt/aa/aa-tile", X_OK) != 0) { alog("native tile: helper missing; toggle off/on to retry"); return; }
+    char pidArg[24], lease[64];
+    snprintf(pidArg, sizeof(pidArg), "%d", d.pid);
+    snprintf(lease, sizeof(lease), "%ld:%d:%u", (long)getpid(), d.pid, ++g_tileLaunchNumber);
+    int lf = open(kTileLease, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    if (lf < 0) { alog("native tile: lease unavailable (%d)", errno); return; }
+    ssize_t written = write(lf, lease, strlen(lease)); close(lf);
+    if (written != (ssize_t)strlen(lease)) { revokeTileLease(); return; }
+    int in = open("/dev/null", O_RDONLY);
+    int out = open("/dev/shmem/aa-tile.log", O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    if (in < 0 || out < 0) {
+        if (in >= 0) close(in); if (out >= 0) close(out);
+        revokeTileLease(); alog("native tile: log unavailable"); return;
+    }
+    char* argv[] = {const_cast<char*>("/opt/aa/aa-tile"), const_cast<char*>("managed"), pidArg, lease, NULL};
+    char* envp[] = {const_cast<char*>("PATH=/bin:/usr/bin"), const_cast<char*>("LD_PRELOAD="),
+                   const_cast<char*>("LD_LIBRARY_PATH=/lib:/usr/lib:/opt/sys/lib:/opt/mm/lib"), NULL};
+    pid_t pid = -1;
+#ifdef __QNX__
+    int fdmap[3] = {in, out, out};
+    struct inheritance inh; memset(&inh, 0, sizeof(inh));
+    inh.flags = SPAWN_SETGROUP | SPAWN_SETSIGDEF | SPAWN_SETSIGMASK | SPAWN_NOZOMBIE;
+    inh.pgroup = SPAWN_NEWPGROUP; sigfillset(&inh.sigdefault); sigemptyset(&inh.sigmask);
+    pid = spawn(argv[0], 3, fdmap, &inh, argv, envp);
+#else
+    posix_spawn_file_actions_t fa; posix_spawn_file_actions_init(&fa);
+    posix_spawn_file_actions_adddup2(&fa, in, 0);
+    posix_spawn_file_actions_adddup2(&fa, out, 1);
+    posix_spawn_file_actions_adddup2(&fa, out, 2);
+    if (posix_spawn(&pid, argv[0], &fa, NULL, argv, envp)) pid = -1;
+    posix_spawn_file_actions_destroy(&fa);
+#endif
+    close(in); close(out);
+    if (pid < 0) revokeTileLease();
+    alog("native tile: helper pid %d for daemon %d (one attempt; log /dev/shmem/aa-tile.log)", (int)pid, d.pid);
+}
+
 // ---- Version page + "Show directions at any distance" (rhmiapp-55-navset) -------------------------------------
 bool g_anyDistShown = false;
 bool anyDistOn() { return nbt::flagSet(kAnyDistFlag); }
@@ -2453,6 +2555,8 @@ void statusRun(void* /*self*/) {
     if (!g_kombiMediaShown) showKombiMedia(app);
     if (!g_noLogShown) showNoLog(app);
     if (!g_autostartShown) showAutostart(app);
+    if (!g_autoOpenShown) showAutoOpen(app);
+    if (!g_tileShown) showNativeTile(app);
     if (!g_usbLogShown) showUsbLog(app);
     if (!g_menuIdriveShown) showMenuIdrive(app);
     if (!g_driveModeShown) showDriveMode(app);
@@ -2470,6 +2574,7 @@ void statusRun(void* /*self*/) {
     serviceAutostart();
     serviceBootGuardSettle();
     DaemonState d = readDaemonState();
+    serviceNativeTile(d);
     bool connecting = !strcmp(d.state, "connecting"), connected = !strcmp(d.state, "connected");
 
     // "state|carplay|wfd|usb|transport", written by the daemon from measured facts. The chain is
@@ -2514,15 +2619,7 @@ void statusRun(void* /*self*/) {
         alog("start row text -> %u (%s)", row, d.state);
         g_shownRow = row;
     }
-    if (!serviceAutostartHandoff(app, d, connected)) serviceHold(app, d);
-    if (connected && strcmp(g_prevState, "connected") != 0 && g_entryStart) {
-        g_entryStart = false;                            // one shot, before the return-to-menu step below moves iDrive
-        if (time(NULL) - g_startTime <= kHomeWindowS &&
-            nbt::entrykey::showOnConnect(g_focusKnown, g_menuFocused, d.overlay != 0)) {
-            sendShow();
-            alog("connected after the Open Android Auto entry, our menu on top: asking nbt-aad to come to the front");
-        }
-    }
+    if (!g_controlsEntry.pending() && !serviceAutostartHandoff(app, d, connected)) serviceHold(app, d);
     if (connected && strcmp(g_prevState, "connected") != 0 && g_wantHome && holdEnabled()) {
         g_wantHome = false;                              // serviceHold() holds iDrive on state 13 instead of the main menu
     } else if (connected && strcmp(g_prevState, "connected") != 0 && g_wantHome) {
@@ -2565,6 +2662,57 @@ void* g_vtbl[2 + kVtblSlots];   // [offset-to-top, typeinfo, slots...] copied fr
 void* g_baseOnInit = NULL;
 bmw::PluginApp* g_app = NULL;
 
+// Dedicated, bounded polling also works when status polling is disabled.
+GearRunnable g_controlsRunnable;
+void* g_controlsVtbl[5];
+bmw::PluginApp* g_controlsApp = NULL;
+bool g_controlsPosted = false;
+void sendControlsRequest() {
+    char cmd[48];
+    snprintf(cmd, sizeof(cmd), "controls %u", g_controlsEntry.token());
+    sendToDaemon(cmd);
+}
+void controlsRun(void*) {
+    g_controlsPosted = false;
+    if (!g_controlsEntry.pending() || !g_controlsApp) return;
+    DaemonState d = readDaemonState();
+    nbt::ControlsEntry::Action a = g_controlsEntry.poll(nowMs(), d.pid != 0, d.overlay != 0, d.controlsAck);
+    if (a == nbt::ControlsEntry::OPEN_MENU) {
+        g_ow.reset(nowMs());
+        g_controlsApp->triggerEvent(kEvOpenMenu);
+        alog("controls: projection released; opening controls menu, connection retained");
+    } else if (a == nbt::ControlsEntry::FAILED) {
+        alog("controls: release not confirmed within 5 s; menu not opened, select entry to retry");
+    } else {
+        if (a == nbt::ControlsEntry::SEND) sendControlsRequest();
+        g_controlsPosted = true;
+        g_controlsApp->post(reinterpret_cast<bmw::Runnable*>(&g_controlsRunnable), 100);
+    }
+}
+bool onControlsEntry(void* self, const bmw::Parcel&) {
+    g_controlsApp = g_runApp ? g_runApp : static_cast<bmw::PluginApp*>(self);
+    if (!g_controlsApp) return true;
+    g_autostartPid = 0;
+    g_wantHome = false;
+    g_holding = false;
+    g_prevOverlay = 0;
+    g_hideSent = true;
+    g_popupAside = false;
+    g_ow.reset(nowMs());
+    g_controlsEntry.begin(nowMs());
+    sendControlsRequest();
+    if (!g_controlsPosted) {
+        void** base = reinterpret_cast<void**>(dlsym(RTLD_DEFAULT, "_ZTVN3bmw8RunnableE"));
+        if (base) memcpy(g_controlsVtbl, base, sizeof(g_controlsVtbl));
+        g_controlsVtbl[2] = reinterpret_cast<void*>(&runnableNoop);
+        g_controlsVtbl[3] = reinterpret_cast<void*>(&runnableNoop);
+        g_controlsVtbl[4] = reinterpret_cast<void*>(&controlsRun);
+        g_controlsRunnable.vptr = g_controlsVtbl + 2;
+        controlsRun(NULL);
+    }
+    return true;
+}
+
 // "Open Android Auto" entry / favourite key (raAction 2): see rhmiapp/entry_key.hpp.
 bool onEntryAction(void* self, const bmw::Parcel& /*args*/) {
     // Fire event 53 from the app that owns our menu (g_runApp: the one whose events 50-52 are car-proven); `self` is
@@ -2587,7 +2735,6 @@ bool onEntryAction(void* self, const bmw::Parcel& /*args*/) {
     case nbt::entrykey::kStartAndMenu:
         bootGuardReset("Open Android Auto entry");
         startDaemonOrShow();                             // not running: launches nbt-aad
-        g_entryStart = true;
         break;
     }
     if (app) {                                           // NbtAad_Direct.xml has no menu / event 53: iDrive ignores it
@@ -2631,12 +2778,13 @@ bool onRestartRow(void*, const bmw::Parcel&) {
 }
 
 // ---- restart after a Settings change (rhmiapp-68, settings_watch.hpp) ----------------------------------------------
-// Snapshot of every checkbox when the Settings page is entered; compared when iDrive comes back to the Android Auto
+// Snapshot of daemon-reconfiguration checkboxes when the Settings page is entered; compared when iDrive comes back to the Android Auto
 // main page. Anything different and nbt-aad running = Restart (the same path as the Restart row), so a change applies
 // at once instead of "at the next Start / Restart". The snapshot stays pending if Settings is left another way (a hard
 // key), and is compared the next time the main page shows. NBT_SETTINGS_RESTART=0 in nbt-aad.env turns it off.
+// Connection, screen-opening and tile preferences must not restart a live session.
 const char* const kSettingsFlags[] = {
-    kAutostartFlag, nbt::usblog::kFlagName, kMenuIdriveFlag, kDriveModeFlag, kKombiNavFlag, kAnyDistFlag, kNoLogFlag,
+    nbt::usblog::kFlagName, kMenuIdriveFlag, kDriveModeFlag, kKombiNavFlag, kAnyDistFlag, kNoLogFlag,
     kSpeechBtFlag, kWarnFlag, kUsbAaFlag, kPhoneGpsFlag, kWfdOnlyFlag, kNativeAudioFlag, kLciMediaFlag, kCpCompatFlag,
 };
 const size_t kSettingsFlagCount = sizeof(kSettingsFlags) / sizeof(kSettingsFlags[0]);
@@ -2700,7 +2848,7 @@ bool onMenuFocus(void*, const bmw::Parcel& p) {
     // BACK and tilt-left also reach iDrive and pop it from the blank state 13 to its parent, our menu. Until the 1 s
     // status poll put it back, knob turns / pushes drove our menu rows under the Android Auto picture (car
     // 2026-10-28, nbt-aad-app-11: ten pops in 10 s). Put iDrive back on state 13 right here instead.
-    if (f && g_app && holdEnabled() && g_holding && g_aaSeen && !callActive()) {
+    if (!g_controlsEntry.pending() && f && g_app && holdEnabled() && g_holding && g_aaSeen && !callActive()) {
         DaemonState d = readDaemonState();
         if (d.pid > 0 && d.overlay == 1) {               // 2 = BACK held: the hold may be about to minimize
             struct timespec ts;
@@ -2768,6 +2916,8 @@ bool onSettingsFocus(void*, const bmw::Parcel& p) {
     settingsPageEntered();                               // checkbox snapshot for the restart on leaving
     if (g_app) {
         showAutostart(g_app);
+        showAutoOpen(g_app);
+        showNativeTile(g_app);
         showUsbLog(g_app);
         showMenuIdrive(g_app);
         showDriveMode(g_app);
@@ -2808,10 +2958,13 @@ void addAction(bmw::PluginApp* self, unsigned id, bool (*stub)(void*, const bmw:
 
 bool appOnInit(bmw::PluginApp* self) {
     addAction(self, kEntryAction, &onEntryAction);
+    addAction(self, 5, &onControlsEntry);
     addAction(self, kActStart, &onStartRow);
     addAction(self, kActStop, &onStopRow);
     addAction(self, kActRestart, &onRestartRow);
     addAction(self, kActAutostart, &onAutostartToggle);
+    addAction(self, kActAutoOpen, &onAutoOpenToggle);
+    addAction(self, kActNativeTile, &onNativeTileToggle);
     addAction(self, kActUsbLog, &onUsbLogToggle);
     addAction(self, kActMenuIdrive, &onMenuIdriveToggle);
     addAction(self, kActDriveMode, &onDriveModeToggle);
@@ -2883,6 +3036,7 @@ void appOnError(bmw::PluginApp* /*self*/, unsigned code, const bmw::BasicString<
 
 void appOnFinalize(bmw::PluginApp* self) {
     alog("onFinalize");
+    revokeTileLease();
     g_runApp = NULL;
     self->onFinalize();
 }

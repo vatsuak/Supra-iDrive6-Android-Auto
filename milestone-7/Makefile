@@ -112,7 +112,7 @@ RHMI_LIBS = $(wildcard $(RHMI_LIBDIR)/libAppFramework.A.so $(RHMI_LIBDIR)/libCor
 .PHONY: rhmiapp
 rhmiapp: rhmiapp/libNbtAad.so
 
-rhmiapp/libNbtAad.so: rhmiapp/nbt_aad_app.cpp rhmiapp/overlay_watch.hpp src/favourite_colour.hpp src/favourite_picker.hpp
+rhmiapp/libNbtAad.so: rhmiapp/nbt_aad_app.cpp rhmiapp/overlay_watch.hpp src/favourite_colour.hpp src/favourite_picker.hpp rhmiapp/tile_policy.hpp rhmiapp/controls_entry.hpp src/connection_options.hpp src/ui_state.hpp
 	@echo [BUILD] PluginApp $@
 	$(PLUGIN_CXX) $(PLUGIN_CXXFLAGS) -shared -Wl,-soname,libNbtAad.so -o $@ rhmiapp/nbt_aad_app.cpp $(RHMI_LIBS) -Wl,--allow-shlib-undefined -lang-c++
 	@echo [DONE] Built $@ - install with NbtAad.manifest, NbtAad.xml, NbtAad_ALL_*.zip into Plugins/NbtAad
@@ -165,9 +165,12 @@ volcap: tools/volcap.cpp src/dsi_client.cpp src/dsi_client.hpp src/most/ids.hpp 
 	$(CXX) $(CXXFLAGS) -o $@ tools/volcap.cpp src/dsi_client.cpp -lang-c++
 	@echo [DONE] Built $@
 
+aa-tile: tools/aa_tile.c tools/aa_tile_background_baseline.h
+	$(CC) -O2 -Wall -Wextra -D_QNX_SOURCE -Wc,-std=gnu99 -march=armv7-a -mfpu=vfpv3 -mfloat-abi=softfp -o $@ $< -lsocket
+
 clean:
 	@echo [CLEAN] Removing object files and binaries
-	rm -f $(OBJS) $(OBJS:.o=.d) $(TARGET) test_display test_controls plugin/libhmiaad.so plugin/plugin_check wfd_probe pf_aa
+	rm -f $(OBJS) $(OBJS:.o=.d) $(TARGET) test_display test_controls plugin/libhmiaad.so plugin/plugin_check wfd_probe pf_aa aa-tile
 
 # osdprobe: standalone check that this unit lets us own an LM surface for our own window.
 osdprobe: tools/osdprobe.cpp

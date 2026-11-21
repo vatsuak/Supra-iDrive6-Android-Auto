@@ -1,0 +1,39 @@
+{
+  "daemon": {
+    "elf32ArmLittleEndian": true,
+    "expectedType": 2,
+    "libraries": [
+      "liba2i_client.so",
+      "libc.so.3",
+      "libcpp.so.4",
+      "libcrypto.so.2",
+      "libm.so.2",
+      "libscreen.so.1",
+      "libsocket.so.3",
+      "libssl.so.2",
+      "libusbdi.so.2"
+    ],
+    "version": "v1.9.91-sppreq3-options2"
+  },
+  "plugin": {
+    "elf32ArmLittleEndian": true,
+    "expectedType": 3,
+    "libraries": [
+      "libAppFramework.A.so",
+      "libCoreFramework.A.so",
+      "libc.so.3",
+      "libm.so.2",
+      "libstdc++.so.6"
+    ],
+    "version": "rhmiapp-68-options2"
+  },
+  "helper": {
+    "elf32ArmLittleEndian": true,
+    "expectedType": 2,
+    "libraries": [
+      "libc.so.3",
+      "libsocket.so.3"
+    ],
+    "version": "10-supra-v1991-options2"
+  }
+}

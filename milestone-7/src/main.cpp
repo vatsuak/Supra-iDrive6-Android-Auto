@@ -126,6 +126,9 @@
 #include "spp_direction.hpp"
 #include "neutral_resume.hpp"
 #include "tile_process.hpp"
+#include "background_connect.hpp"
+#include "connection_options.hpp"
+#include "ui_state.hpp"
 #include "cluster/nav_core.hpp"
 #include "cluster/ric_media.hpp"
 #include <termios.h>
@@ -222,6 +225,9 @@ static void onFavouriteTouch(const nbt::most::View& m, void*) {
 // instance owns UDP 127.0.0.1:52790; a later instance finds the port taken, sends "show" to the running daemon
 // and exits before touching the screen, firewall or Bluetooth. "show" puts the overlay back on top, "quit" stops.
 static volatile sig_atomic_t g_showReq = 0;
+static volatile sig_atomic_t g_openReq = 0; // explicit local selection, distinct from automatic screen restoration
+static volatile sig_atomic_t g_controlsReq = 0; // explicit controls-menu request token
+static unsigned g_controlsAck = 0; // main-loop acknowledgement, published after hiding
 static volatile sig_atomic_t g_hideReq = 0;   // iDrive app: a hard key took iDrive away from our held state (Fork F)
 static int g_ctlFd = -1;
 
@@ -455,7 +461,13 @@ static void* ctlThread(void*) {
             sendto(g_ctlFd, pong, 4, 0, (struct sockaddr*)&from, flen);
             continue;
         }
-        if (!strncmp(buf, "show", 4)) { printf("[Ctl] 'show' from a second launch (iDrive menu): overlay to front.\n"); g_showReq = 1; }
+        if (!strcmp(buf, "open")) { printf("[Ctl] explicit local Android Auto selection.\n"); g_openReq = 1; }
+        else if (!strncmp(buf, "controls ", 9)) {
+            unsigned token = 0; char extra = 0;
+            if (sscanf(buf + 9, "%u %c", &token, &extra) == 1 && token && token <= 0x7fffffffu)
+                g_controlsReq = (sig_atomic_t)token;
+        }
+        else if (!strncmp(buf, "show", 4)) { printf("[Ctl] 'show': request overlay restoration.\n"); g_showReq = 1; }
         else if (!strncmp(buf, "gear ", 5)) {
             int g = atoi(buf + 5);
             if (g != g_gear) printf("[Gear] gear %d -> %d (from iDrive app)\n", (int)g_gear, g);
@@ -581,9 +593,10 @@ static void writeUiState(const char* state, int overlay, bool favouritePeek) {
     // The overlay is 0 hidden, 1 on screen, 2 BACK held, 3 menu key, 4 car
     // control, 5 knob turn / push only).
     // fscanf("%23s %d %d") still matches.
-    char rec[48];
-    int n = snprintf(rec, sizeof(rec), "%-11.11s %10d %d %d %u\n", state ? state : "idle", (int)getpid(), overlay,
-                     favouritePeek ? 1 : 0, (unsigned)g_favouriteTouchMask);
+    // Keep upstream favourite fields 4/5; field 6 acknowledges controls release.
+    char rec[80];
+    int n = nbt::formatUiState(rec, sizeof(rec), state, (int)getpid(), overlay,
+                               favouritePeek, (unsigned)g_favouriteTouchMask, g_controlsAck);
     if (n < 0) return;
     int fd = open(kUiStateFile, O_WRONLY | O_CREAT, 0666);
     static bool s_warned = false;
@@ -2131,7 +2144,7 @@ static void onKnobEvent(const nbt::car::CcsEvent& ev, void* user) {
     }
 }
 
-#define NBT_AAD_BUILD "v1.9.116"
+#define NBT_AAD_BUILD "v1.9.116-options3"
 
 // Marker the RHMI app scans for (scanFileFor) to show the daemon version without spawning it:
 // keep the prefix exact.
@@ -2587,15 +2600,9 @@ int main(int argc, char* argv[]) {
 
     printf("[Main] Daemon running. Press Ctrl+C to terminate.\n");
 
-    // Daemon main loop. The overlay follows the session: up while a phone session is running, down
-    // (iDrive visible) otherwise. This is the only place that calls setVisible() while the daemon runs,
-    // so the 3-5 system() calls of two transitions cannot interleave, stop() cannot race them, and a
-    // session that dies right after it started cannot leave the overlay on top of iDrive.
-    // Default (known-good on the car): the overlay stays up for the whole daemon run.
-    // NBT_HIDE_IDLE=1 gives iDrive back while no phone is connected (hide/show cycle is UNTESTED).
-    // Give iDrive the screen while no phone session is up (default since v1.6.5: a dropped link must not leave the
-    // last frame on screen). NBT_HIDE_IDLE=0 keeps the overlay up for the whole daemon run (old behaviour).
-    const bool hide_idle = nbt::envFlag("NBT_HIDE_IDLE") != 0;        // default on; NBT_HIDE_IDLE=0 keeps the overlay up
+    // One thread owns overlay transitions. A disconnected phone never owns the
+    // screen. Each new connection snapshots auto-open; otherwise only explicit
+    // Open grants ownership. Legacy NBT_HIDE_IDLE=0 cannot bypass this policy.
     const bool gear_action = nbt::envFlag("NBT_GEAR_ACTION") != 0;    // default on; NBT_GEAR_ACTION=0 ignores the gear
     const int gear_reverse = (int)nbt::envHex("NBT_GEAR_REVERSE", 2);   // CDS driving.gear value for R (verify in the log)
     const bool reverse_focus = nbt::envFlag("NBT_REVERSE_FOCUS") == 1; // also tell the phone it lost the screen in R
@@ -2621,6 +2628,7 @@ int main(int argc, char* argv[]) {
     printf("[Main] Screen ownership: reverse gear value %d (%s), exit-to-iDrive via the phone's car icon, "
            "back via the iDrive Android Auto entry.\n", gear_reverse, gear_action ? "on" : "off (NBT_GEAR_ACTION=0)");
     bool overlay_on = false;              // video.init() leaves the window hidden
+    nbt::BackgroundConnect background; // screen policy is independent of how the daemon was started
     bool was_active = false;
     bool was_reverse = false;
     bool was_dm_peek = false;
@@ -2641,6 +2649,7 @@ int main(int argc, char* argv[]) {
     int ui_overlay = -1;
     int ui_favouritePeek = -1;
     int ui_favouriteMask = -1;
+    unsigned ui_controlsAck = 0;
     int night_posted = -1;
     // CarPlay hand-off: 2.5 s without an Android Auto session -> decoder context gets CarPlay's settings (an iPhone
     // taking over right away gets an unzoomed picture). Any later Android Auto connection rebuilds the Android Auto
@@ -2686,12 +2695,13 @@ int main(int argc, char* argv[]) {
             // status and hint files once a second so the iDrive row follows (v1.9.115).
             if (++s_statusTick >= 4) { s_statusTick = 0; writeStatus(st); }
             if (strcmp(st, ui_state) != 0 || ov != ui_overlay || ui_favouritePeek != (int)g_favouritePeek ||
-                ui_favouriteMask != (int)g_favouriteTouchMask) {
+                ui_favouriteMask != (int)g_favouriteTouchMask || ui_controlsAck != g_controlsAck) {
                 writeUiState(st, ov, g_favouritePeek != 0);
                 s_statusTick = 0;
                 if (strcmp(st, ui_state) != 0) printf("[UiState] iDrive menu entry: %s\n", st);
                 ui_state = st;
                 ui_overlay = ov;
+                ui_controlsAck = g_controlsAck;
                 ui_favouritePeek = (int)g_favouritePeek;
                 ui_favouriteMask = (int)g_favouriteTouchMask;
             }
@@ -2729,11 +2739,21 @@ int main(int argc, char* argv[]) {
         if ((log_sync_ticks % 20) == 0) serviceUsbLog(false);   // every 5 s: stick plugged in / removed, checkbox
         checkRamLogCap();                                         // every tick: RAM log 5 MB cap
         if (logPersistent() && (log_sync_ticks % 8) == 0) { fflush(stdout); fsync(fileno(stdout)); }
-        if (act && !was_active) { g_userExit = 0; g_carExit = 0; }   // a new phone session comes up in Android Auto
+        if (!act && was_active) background.sessionEnded();
+        if (act && !was_active) {
+            background.sessionStarted(nbt::flagSet(nbt::kAutoOpenFlag));
+            printf("[Focus] new connection: %s\n", background.waitingForSelection() ?
+                   "waiting for explicit Open" : "automatic screen opening enabled");
+            // Connection and screen-opening preferences are independent.
+            // An explicit selection before the phone finishes connecting counts.
+            g_userExit = background.waitingForSelection() ? 1 : 0;
+            g_carExit = g_userExit;
+        }
         if (g_backState == 1 && (uint32_t)(monoMs() - g_backDownMs) >= backHoldMs()) {
             // Car-side minimize, like reverse: only the overlay goes down. Telling the phone (unrequested UNFOCUSED,
             // NBT_BACK_HOLD_FOCUS=1) can make it ask for the screen right back, which re-showed AA at once.
             g_backState = 2;
+            background.dismissed(); // do not auto-open again after the driver returns to iDrive
             g_userExit = 1;
             g_carExit = 1;
             if (act && nbt::envFlag("NBT_BACK_HOLD_FOCUS") == 1) g_session.postVideoFocus(false);
@@ -2745,6 +2765,7 @@ int main(int argc, char* argv[]) {
                 printf("[Focus] phone asked for the screen while minimized by BACK hold: ignored (use the iDrive entry)\n");
             } else {
                 g_userExit = (ff == 2) ? 1 : 0;
+                if (ff == 2) { background.dismissed(); g_carExit = 1; }
                 printf("[Focus] %s\n", ff == 2 ? "driver exited Android Auto: iDrive gets the screen" : "phone took the screen back");
             }
         }
@@ -2754,9 +2775,11 @@ int main(int argc, char* argv[]) {
             g_carExit = 1;
             printf("[Focus] iDrive left the Android Auto screen (hard key): minimizing Android Auto\n");
         }
-        if (g_showReq) {                                 // iDrive Android Auto entry selected
+        const bool showRequested = g_showReq || g_openReq;
+        const bool explicitOpen = g_openReq != 0;
+        if (showRequested) { g_showReq = 0; g_openReq = 0; }
+        if (showRequested && background.requestShow(explicitOpen)) {
             g_favouritePreview.cancel();
-            g_showReq = 0;
             g_userExit = 0;
             g_carExit = 0;
             if (act) g_session.postVideoFocus(true);     // phone resumes projecting (it may have paused while native)
@@ -2764,6 +2787,16 @@ int main(int argc, char* argv[]) {
             force_show = true;                           // re-assert even if we think it is up (HMI may have reordered layers)
             if (was_park) { park_dismissed = true; printf("[Park] Android Auto chosen during park assist: kept until it ends\n"); }
             if (was_camera) { camera_dismissed = true; printf("[Camera] Android Auto chosen over the camera view: kept until it closes\n"); }
+        }
+        // Deliberate menu entry wins over show/open received in the same tick.
+        // A duplicate retry must not hide a later explicit Open again.
+        unsigned controls = (unsigned)g_controlsReq;
+        if (controls && controls != g_controlsAck) {
+            g_favouritePreview.cancel();
+            background.dismissed();
+            g_userExit = g_carExit = 1;
+            force_show = false;
+            printf("[Focus] controls requested: hide projection, keep session connected\n");
         }
         bool reverse = gear_action && g_gear == gear_reverse;
         if (reverse != was_reverse) {
@@ -2872,7 +2905,7 @@ int main(int argc, char* argv[]) {
                 ++g_idrAsks;
             }
         }
-        bool want = (hide_idle ? act : true) && !g_userExit && !reverse && !park && !camera && !dm_peek;
+        bool want = background.visible(act, g_userExit != 0, reverse, park, camera, dm_peek);
         bool favouritePeek = favouritePreviewEnabled &&
             g_favouritePreview.step(monoMs(), want && act, overlay_on, g_most.state() == nbt::most::kUp);
         if (favouritePeek != (g_favouritePeek != 0))
@@ -2920,6 +2953,9 @@ int main(int argc, char* argv[]) {
         } else if (want && previewGeometryChanged) {
             video.refreshFavouritePreview();
         }
+        // Acknowledge only after setVisible(false) has released projection.
+        // The pre-composition status write above must still carry the old token.
+        if (controls && !overlay_on) g_controlsAck = controls;
         if (previewGeometryChanged) {
             // Publish the completed composition now, not on the following 250 ms tick.
             writeUiState(act ? "connected" : ui_state, g_inputToPhone ? 1 : 0, g_favouritePeek != 0);

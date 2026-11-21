@@ -1,3 +1,8 @@
+> **Fork development branch:** native Android Auto tile, English tile naming,
+> independent connection/screen settings, and controls-menu access. See
+> [implementation and validation](tools/tile/IMPLEMENTATION.md). The latest
+> options2 build is a local candidate awaiting car validation.
+
 # Overview
 I'm a believer of humans writing things, but this is well beyond my skillset, so I (me, Ronnie) am writing this (the words on the page you're reading). I'm not a C-dev, but I do know these things can be done... So... This repository contains code for the J29 Toyota Supra to run Android Auto natively on the NBT Evo head unit. Yeah, talk about a big one. I'll preface it with this: Big screw you to all the companies who have profited for **years** on MMI units. You could have drove innovation, yet you chose to implement a "just good enough" solution to get people to bite. Okay, now that that's out of the way...
 
@@ -50,3 +55,9 @@ The code needs to be compatible with Armv7LE. I built it with [QNX Momentics](ht
 ### Feeling Generous?
 I don't charge for this project, I don't charge for deployments, if this has helped you and you're feeling generous, here's my paypal: https://paypal.me/banananaisu
 Please do not feel obligated to send me anything. I've had a couple people ask, if it makes you feel better, you can buy me a drink. I like Red Wine & Bourbon :) My goal in this was never to make any money. It is to provide a cheap/low cost solution so we don't have to deal with MMI products & don't have to deal with people selling native Android Auto integrations.
+
+## Optional v1.9.91 native tile RAM test
+
+This branch adds a separate 120-second CarLife-backed tile helper alongside the
+official v1.9.91 daemon. See [the tile guide](tools/tile/README.md). The daemon,
+plugin and HMI resources are unchanged; head-unit testing remains outstanding.

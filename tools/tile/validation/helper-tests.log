@@ -1,0 +1,122 @@
+[rx] FB 24.71 fkt 0x001 Set from 0x2022
+[rx] data len=5: 01 20 22 0c f1
+[rx] iDrive (0x2022) subscribed to function 0xcf1
+[tx] FB 24.71 fkt 0xcf1 op 0xC -> 0x2022
+[tx] msg len=37: 07 00 00 00 00 00 00 00 01 00 00 00 00 00 00 00 22 20 34 12 24 71 f1 0c 0c 00 00 00 07 00 00 00 01 00 00 00 00
+[tx] request 0x2 -> rc=0
+[tile] SHOWN
+[tx] FB 24.71 fkt 0xcf1 op 0xC -> 0x2022
+[tx] msg len=37: 07 00 00 00 00 00 00 00 01 00 00 00 00 00 00 00 22 20 34 12 24 71 f1 0c 0c 00 00 00 07 00 00 00 01 00 00 00 01
+[tx] request 0x2 -> rc=0
+[tile] hidden
+[rx] FB 24.71 fkt 0xce8 Set from 0x2022
+[rx] data len=1: 00
+[rx] FB 24.71 fkt 0xce8 Set from 0x2022
+[rx] data len=1: 00
+[tile] pressed: main-menu tile
+[show] 'open' to nbt-aad (127.0.0.1:52790) -> 4
+[rx] FB 24.71 fkt 0xce8 Set from 0x2055
+[rx] data len=1: 00
+[rx] FB 24.71 fkt 0xce8 Set from 0x2022
+[rx] data len=1: 00
+[tx] FB 24.71 fkt 0xcf1 op 0xC -> 0x2022
+[tx] msg len=37: 07 00 00 00 00 00 00 00 01 00 00 00 00 00 00 00 22 20 34 12 24 71 f1 0c 0c 00 00 00 07 00 00 00 01 00 00 00 01
+[tx] request 0x2 -> rc=0
+[tx] device len=12: 07 00 00 00 01 00 00 00 71 24 00 00
+[tx] request 0x4 -> rc=0
+[tile] tile hidden and device unregistered
+[tx] FB 24.71 fkt 0xcf1 op 0xC -> 0x2022
+[tx] msg len=37: 07 00 00 00 00 00 00 00 01 00 00 00 00 00 00 00 22 20 34 12 24 71 f1 0c 0c 00 00 00 07 00 00 00 01 00 00 00 01
+[tx] request 0x2 -> rc=-1
+[tx] device len=12: 07 00 00 00 01 00 00 00 71 24 00 00
+[tx] request 0x0 -> rc=-1
+[tx] FB 24.71 fkt 0xcf1 op 0xC -> 0x2022
+[tx] msg len=37: 07 00 00 00 00 00 00 00 01 00 00 00 00 00 00 00 22 20 34 12 24 71 f1 0c 0c 00 00 00 07 00 00 00 01 00 00 00 00
+[tx] request 0x2 -> rc=-1
+[dsi] detached; stopping this test
+[tx] FB 24.71 fkt 0xcf1 op 0xC -> 0x2022
+[tx] msg len=37: 07 00 00 00 00 00 00 00 01 00 00 00 00 00 00 00 22 20 34 12 24 71 f1 0c 0c 00 00 00 07 00 00 00 01 00 00 00 00
+[tx] request 0x2 -> rc=1
+[tx] device len=12: 07 00 00 00 01 00 00 00 71 24 00 00
+[tx] request 0x0 -> rc=1
+[tx] FB 24.71 fkt 0xcf1 op 0xC -> 0x2022
+[tx] msg len=37: 07 00 00 00 00 00 00 00 01 00 00 00 00 00 00 00 22 20 34 12 24 71 f1 0c 0c 00 00 00 07 00 00 00 01 00 00 00 01
+[tx] request 0x2 -> rc=1
+[rx] FB 24.71 fkt 0x001 Set from 0x2022
+[rx] data len=5: 01 20 22 0c f2
+[rx] iDrive (0x2022) subscribed to function 0xcf2
+[tx] FB 24.71 fkt 0x001 op 0xF -> 0x2022
+[tx] msg len=40: 07 00 00 00 00 00 00 00 01 00 00 00 00 00 00 00 22 20 34 12 24 71 01 00 0f 00 00 00 07 00 00 00 04 00 00 00 20 10 0c f2
+[tx] request 0x2 -> rc=1
+[dsi] attached: registering MOST client 'AA_TILE'
+[tx] request 0xf -> rc=1
+[tx] FB 24.71 fkt 0xcf1 op 0xC -> 0x2022
+[tx] msg len=37: 07 00 00 00 00 00 00 00 01 00 00 00 00 00 00 00 22 20 34 12 24 71 f1 0c 0c 00 00 00 07 00 00 00 01 00 00 00 00
+[tx] request 0x2 -> rc=2
+[tx] device len=12: 07 00 00 00 01 00 00 00 71 24 00 00
+[tx] request 0x0 -> rc=2
+[tx] FB 24.71 fkt 0xcf1 op 0xC -> 0x2022
+[tx] msg len=37: 07 00 00 00 00 00 00 00 01 00 00 00 00 00 00 00 22 20 34 12 24 71 f1 0c 0c 00 00 00 07 00 00 00 01 00 00 00 01
+[tx] request 0x2 -> rc=2
+[rx] FB 24.71 fkt 0x001 Set from 0x2022
+[rx] data len=5: 01 20 22 0c f2
+[rx] iDrive (0x2022) subscribed to function 0xcf2
+[tx] FB 24.71 fkt 0x001 op 0xF -> 0x2022
+[tx] msg len=40: 07 00 00 00 00 00 00 00 01 00 00 00 00 00 00 00 22 20 34 12 24 71 01 00 0f 00 00 00 07 00 00 00 04 00 00 00 20 10 0c f2
+[tx] request 0x2 -> rc=2
+[dsi] attached: registering MOST client 'AA_TILE'
+[tx] request 0xf -> rc=2
+[tx] FB 24.71 fkt 0xcf1 op 0xC -> 0x2022
+[tx] msg len=37: 07 00 00 00 00 00 00 00 01 00 00 00 00 00 00 00 22 20 34 12 24 71 f1 0c 0c 00 00 00 07 00 00 00 01 00 00 00 00
+[tx] request 0x2 -> rc=3
+[tx] device len=12: 07 00 00 00 01 00 00 00 71 24 00 00
+[tx] request 0x0 -> rc=3
+[tx] FB 24.71 fkt 0xcf1 op 0xC -> 0x2022
+[tx] msg len=37: 07 00 00 00 00 00 00 00 01 00 00 00 00 00 00 00 22 20 34 12 24 71 f1 0c 0c 00 00 00 07 00 00 00 01 00 00 00 01
+[tx] request 0x2 -> rc=3
+[rx] FB 24.71 fkt 0x001 Set from 0x2022
+[rx] data len=5: 01 20 22 0c f2
+[rx] iDrive (0x2022) subscribed to function 0xcf2
+[tx] FB 24.71 fkt 0x001 op 0xF -> 0x2022
+[tx] msg len=40: 07 00 00 00 00 00 00 00 01 00 00 00 00 00 00 00 22 20 34 12 24 71 01 00 0f 00 00 00 07 00 00 00 04 00 00 00 20 10 0c f2
+[tx] request 0x2 -> rc=3
+[dsi] attached: registering MOST client 'AA_TILE'
+[tx] request 0xf -> rc=3
+[tx] FB 24.71 fkt 0xcf1 op 0xC -> 0x2022
+[tx] msg len=37: 07 00 00 00 00 00 00 00 01 00 00 00 00 00 00 00 22 20 34 12 24 71 f1 0c 0c 00 00 00 07 00 00 00 01 00 00 00 00
+[tx] request 0x2 -> rc=4
+[tx] device len=12: 07 00 00 00 01 00 00 00 71 24 00 00
+[tx] request 0x0 -> rc=4
+[tx] FB 24.71 fkt 0xcf1 op 0xC -> 0x2022
+[tx] msg len=37: 07 00 00 00 00 00 00 00 01 00 00 00 00 00 00 00 22 20 34 12 24 71 f1 0c 0c 00 00 00 07 00 00 00 01 00 00 00 01
+[tx] request 0x2 -> rc=4
+[rx] FB 24.71 fkt 0x001 Set from 0x2022
+[rx] data len=5: 01 20 22 0c f2
+[rx] iDrive (0x2022) subscribed to function 0xcf2
+[tx] FB 24.71 fkt 0x001 op 0xF -> 0x2022
+[tx] msg len=40: 07 00 00 00 00 00 00 00 01 00 00 00 00 00 00 00 22 20 34 12 24 71 01 00 0f 00 00 00 07 00 00 00 04 00 00 00 20 10 0c f2
+[tx] request 0x2 -> rc=4
+[dsi] attached: registering MOST client 'AA_TILE'
+[tx] request 0xf -> rc=4
+[tx] FB 24.71 fkt 0xcf1 op 0xC -> 0x2022
+[tx] msg len=37: 07 00 00 00 00 00 00 00 01 00 00 00 00 00 00 00 22 20 34 12 24 71 f1 0c 0c 00 00 00 07 00 00 00 01 00 00 00 00
+[tx] request 0x2 -> rc=5
+[tx] device len=12: 07 00 00 00 01 00 00 00 71 24 00 00
+[tx] request 0x0 -> rc=5
+[tx] FB 24.71 fkt 0xcf1 op 0xC -> 0x2022
+[tx] msg len=37: 07 00 00 00 00 00 00 00 01 00 00 00 00 00 00 00 22 20 34 12 24 71 f1 0c 0c 00 00 00 07 00 00 00 01 00 00 00 01
+[tx] request 0x2 -> rc=5
+[rx] FB 24.71 fkt 0x001 Set from 0x2022
+[rx] data len=5: 01 20 22 0c f2
+[rx] iDrive (0x2022) subscribed to function 0xcf2
+[tx] FB 24.71 fkt 0x001 op 0xF -> 0x2022
+[tx] msg len=40: 07 00 00 00 00 00 00 00 01 00 00 00 00 00 00 00 22 20 34 12 24 71 01 00 0f 00 00 00 07 00 00 00 04 00 00 00 20 10 0c f2
+[tx] request 0x2 -> rc=5
+[dsi] attached: registering MOST client 'AA_TILE'
+[tx] request 0xf -> rc=5
+[show] 'open' to nbt-aad (127.0.0.1:52790) -> -1
+[show] 'open' to nbt-aad (127.0.0.1:52790) -> 0
+[show] 'open' to nbt-aad (127.0.0.1:52790) -> 4
+aa-tile exclusive RAM lock: File exists
+aa-tile exclusive RAM lock: File exists
+PASS: live-state gates, MOST packets/presses, nonzero DSI/UDP send failures, cleanup, args and instance lock

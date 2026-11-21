@@ -1,0 +1,25 @@
+{
+  "authorizedWorkflows": [],
+  "accessedWorkflows": [],
+  "publishedRuntimeSourcesMatchOptions2Build": true,
+  "publicationOnlyBuildChange": "Add controls_entry.hpp to plugin Makefile prerequisites; no compiler or runtime changes",
+  "pythonTests": {
+    "optionsUpgradeRollback": 14,
+    "labelDeploymentRollback": 14,
+    "labelBackupPreparation": 13,
+    "archivedTileInstaller": 14,
+    "labelCodecWithPrivateFixtures": 11
+  },
+  "additionalChecks": [
+    "tile policy under ASan/UBSan",
+    "generated text ZIP reproducible",
+    "helper pin generation reproduces tested header",
+    "staged whitespace check",
+    "staged credential/private-key and firmware-database filename scan"
+  ],
+  "skipped": [
+    "test_ram_process.py: requires disposable root Linux container; publication run is macOS"
+  ],
+  "vehicleAccessDuringPublication": false,
+  "latestOptions2HardwareTested": false
+}

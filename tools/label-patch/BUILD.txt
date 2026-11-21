@@ -1,0 +1,31 @@
+Rebuild the offline candidate (tested on macOS with Apple Clang)
+
+Python 3.9+ needs only the standard library for inspection, verification and
+local restore-copy. The reference compressor adapter needs a C compiler.
+All commands below are local: no head-unit access, firmware build or SDK needed.
+
+Download ucl-reference.tar.gz from the URL in PROVENANCE.txt and verify its
+SHA256 first. From tools/label-patch (use your own verified database backup):
+  tar -xzf ucl-reference.tar.gz
+  cd ucl-master
+  ./configure --disable-shared --enable-static CC='clang -std=gnu89'
+  make -C src -j2 CFLAGS='-O2 -Wall -include stdlib.h -include string.h'
+  cd ..
+  cc -O2 -Wall -Wextra -I ucl-master/include ucl_tool.c ucl-master/src/.libs/libucl.a -o ucl-tool
+  python3 label_db.py build /path/to/original-text.db /path/to/rebuilt-text.db --ucl-tool ./ucl-tool
+  python3 test_label_db.py /path/to/original-text.db /path/to/rebuilt-text.db ./ucl-tool
+
+The old UCL configure script does not detect STDC_HEADERS correctly with this
+modern compiler. The explicit standard-header includes above fix compilation;
+no UCL compression or decompression algorithm source was modified.
+No make install or elevated privileges are needed.
+
+Windows users can verify the supplied candidate with Python alone; this package
+does not contain a Windows compressor executable. The macOS build commands are
+not claimed to work directly in PowerShell.
+
+A no-op container rebuild preserves every byte. Recompressing changed English
+payloads produces a different compressed encoding but identical intended decoded
+records. Unchanged payloads are copied without recompression.
+The builder refuses another original hash, pre-existing output or missing/changed
+source labels. Keep the original recovery copy unchanged.

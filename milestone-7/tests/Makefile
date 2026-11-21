@@ -45,6 +45,9 @@ SRC_test_audio_mixer       := src/audio/mixer.cpp src/audio/playout.cpp src/audi
 SRC_test_audio_route       := src/audio/audio_route.cpp
 SRC_test_bcl_detect        := src/wireless_setup.cpp
 SRC_test_boot_guard        :=
+SRC_test_ui_state :=
+SRC_test_controls_entry :=
+SRC_test_background_connect :=
 SRC_test_overlay_watch     :=
 SRC_test_pf_aa             :=
 SRC_test_bt_play           := src/audio/bt_play.cpp
@@ -135,6 +138,7 @@ check: $(addprefix run-,$(TESTS)) run-test_aa_proto32 run-test_media_payload run
 
 .PHONY: run-test_favourite_resources
 run-test_favourite_resources:
+	@python3 test_connection_resources.py
 	@python3 test_favourite_resources.py
 	@python3 test_favourites_update.py
 
